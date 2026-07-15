@@ -1,0 +1,58 @@
+version: 2
+project_name: biscuit
+
+builds:
+  - main: ./cmd/biscuit
+    binary: biscuit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: windows
+        goarch: "386"
+    ldflags:
+      - -s -w
+      - -X github.com/monthy-app/biscuit/internal/version.Version={{.Version}}
+      - -X github.com/monthy-app/biscuit/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/monthy-app/biscuit/internal/version.Date={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true # release-please owns the changelog
+
+release:
+  prerelease: auto
+
+homebrew_casks:
+  - name: biscuit
+    repository:
+      owner: monthy-app
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/monthy-app/biscuit
+    description: Generate a production-ready CLI repository from an OpenAPI 3.x spec
+    # unsigned binaries: strip the quarantine attribute so macOS runs them
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/biscuit"]
+          end
