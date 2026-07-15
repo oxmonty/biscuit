@@ -4,7 +4,7 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 function binaryPath() {
-  const pkg = `@monthy/biscuit-${process.platform}-${process.arch}`;
+  const pkg = `@oxmonty/biscuit-${process.platform}-${process.arch}`;
   const bin = process.platform === "win32" ? "biscuit.exe" : "biscuit";
   try {
     return path.join(path.dirname(require.resolve(`${pkg}/package.json`)), "bin", bin);

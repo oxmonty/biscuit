@@ -34,7 +34,7 @@ for (const b of binaries) {
   const arch = ARCH[b.goarch];
   if (!platform || !arch) continue;
 
-  const name = `@monthy/biscuit-${platform}-${arch}`;
+  const name = `@oxmonty/biscuit-${platform}-${arch}`;
   const dir = path.join("dist", "npm", `${platform}-${arch}`);
   const binDir = path.join(dir, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -50,7 +50,7 @@ for (const b of binaries) {
         name,
         version,
         description: `biscuit binary for ${platform}-${arch}`,
-        repository: { type: "git", url: "git+https://github.com/monthy-app/biscuit.git" },
+        repository: { type: "git", url: "git+https://github.com/oxmonty/biscuit.git" },
         license: "GPL-2.0-or-later",
         os: [platform],
         cpu: [arch],

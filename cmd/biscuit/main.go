@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/monthy-app/biscuit/internal/cli"
+	"github.com/oxmonty/biscuit/internal/cli"
 )
 
 func main() {

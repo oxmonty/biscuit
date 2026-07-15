@@ -1,6 +1,6 @@
 # biscuit
 
-- Repo: https://github.com/monthy-app/biscuit.git
+- Repo: https://github.com/oxmonty/biscuit.git
 
 > A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`) — an open, self-hostable alternative to the acquired Stainless CLI generator.
 
@@ -10,7 +10,7 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 
 Usable two ways:
 
-- **Library**: `import "github.com/monthy-app/biscuit"` → `biscuit.Generate(ctx, spec, cfg)` returns a file plan
+- **Library**: `import "github.com/oxmonty/biscuit"` → `biscuit.Generate(ctx, spec, cfg)` returns a file plan
 - **CLI**: `biscuit generate | doctor | bench | init | update`
 
 ---

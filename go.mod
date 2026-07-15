@@ -1,4 +1,4 @@
-module github.com/monthy-app/biscuit
+module github.com/oxmonty/biscuit
 
 go 1.24.2
 

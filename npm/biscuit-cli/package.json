@@ -4,7 +4,7 @@
   "description": "Generate a production-ready CLI repository from an OpenAPI 3.x spec",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monthy-app/biscuit.git"
+    "url": "git+https://github.com/oxmonty/biscuit.git"
   },
   "license": "GPL-2.0-or-later",
   "bin": {

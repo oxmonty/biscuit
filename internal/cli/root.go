@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/monthy-app/biscuit/internal/version"
+	"github.com/oxmonty/biscuit/internal/version"
 )
 
 func NewRootCommand() *cobra.Command {
