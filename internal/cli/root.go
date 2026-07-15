@@ -23,7 +23,8 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print the biscuit version",
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "biscuit %s (commit %s, built %s)\n",
+			// not cmd.Printf: cobra's Print helpers default to stderr
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "biscuit %s (commit %s, built %s)\n",
 				version.Version, version.Commit, version.Date)
 		},
 	}
