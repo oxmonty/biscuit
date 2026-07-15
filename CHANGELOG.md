@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0-alpha.2](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.1...v0.1.0-alpha.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* **npm:** publish prereleases under their prerelease dist-tag ([1632265](https://github.com/oxmonty/biscuit/commit/1632265ff1b03df19d05af26acaac759cfa3c810))
+* **release:** point the cask binary stanza at the biscuit binary ([257bd59](https://github.com/oxmonty/biscuit/commit/257bd59b888e681cbdce9958ce78fb2bea1ea52d))
+
 ## 0.1.0-alpha.1 (2026-07-15)
 
 
