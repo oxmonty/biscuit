@@ -2,18 +2,36 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write # npm trusted publishing (OIDC)
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # runs here, not on a tag trigger: release-please tags with GITHUB_TOKEN,
+  # and GITHUB_TOKEN-created events never trigger workflows
   goreleaser:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
@@ -33,4 +51,6 @@ jobs:
       - name: Publish npm packages
         # platform packages first, then the biscuit-cli shim (order matters:
         # the shim's optionalDependencies must be resolvable when it lands)
-        run: node scripts/publish_npm.mjs "${GITHUB_REF_NAME#v}"
+        run: node scripts/publish_npm.mjs "${TAG_NAME#v}"
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
