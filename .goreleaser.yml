@@ -41,7 +41,8 @@ release:
   prerelease: auto
 
 homebrew_casks:
-  - name: biscuit
+  # named biscuit-cli to match the npm package; the installed command stays `biscuit`
+  - name: biscuit-cli
     repository:
       owner: monthy-app
       name: homebrew-tap

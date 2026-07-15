@@ -11,8 +11,8 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 ## Install
 
 ```sh
-brew install monthy-app/tap/biscuit   # Homebrew
-npx biscuit-cli version               # npm
+brew tap monthy-app/tap && brew install biscuit-cli   # Homebrew
+npx biscuit-cli version                               # npm
 ```
 
 Or grab a binary from [GitHub Releases](https://github.com/monthy-app/biscuit/releases).
