@@ -14,6 +14,8 @@ func NewRootCommand() *cobra.Command {
 		Short:   "Generate a production-ready CLI repository from an OpenAPI 3.x spec",
 		Version: version.Version,
 	}
+	// bare version for --version (script/agent-friendly); `biscuit version` has the detail
+	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(newVersionCommand())
 	return root
 }
