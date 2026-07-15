@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0-alpha.3](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.2...v0.1.0-alpha.3) (2026-07-15)
+
+
+### Bug Fixes
+
+* **cli:** print bare version for --version ([5d9b824](https://github.com/oxmonty/biscuit/commit/5d9b824483f5bec52a257ebb9e38d21bd98d1e71))
+* **release:** tell users the installed command is biscuit in cask caveats ([0bdd249](https://github.com/oxmonty/biscuit/commit/0bdd249f33a6e6515b1d5d844b94fdb152ef1571))
+
 ## [0.1.0-alpha.2](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.1...v0.1.0-alpha.2) (2026-07-15)
 
 
