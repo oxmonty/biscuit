@@ -54,3 +54,7 @@ jobs:
         run: node scripts/publish_npm.mjs "${TAG_NAME#v}"
         env:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          # bootstrap only: trusted publishing (OIDC) can't be configured until a
+          # package exists, so the first release authenticates with this token.
+          # Once OIDC is set up on all packages, delete the secret.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
