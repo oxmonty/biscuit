@@ -48,6 +48,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: Update npm
+        # trusted publishing (OIDC) needs npm >= 11.5; node 22 bundles npm 10
+        run: npm install -g npm@latest
       - name: Publish npm packages
         # platform packages first, then the biscuit-cli shim (order matters:
         # the shim's optionalDependencies must be resolvable when it lands)
