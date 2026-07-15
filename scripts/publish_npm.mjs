@@ -24,8 +24,15 @@ if (binaries.length === 0) {
   process.exit(1);
 }
 
+// npm refuses to publish prereleases without an explicit dist-tag; without
+// this, `latest` would also end up pointing at an alpha
+const distTag = version.includes("-") ? version.split("-")[1].split(".")[0] : "latest";
+
 function publish(dir) {
-  execFileSync("npm", ["publish", "--access", "public"], { cwd: dir, stdio: "inherit" });
+  execFileSync("npm", ["publish", "--access", "public", "--tag", distTag], {
+    cwd: dir,
+    stdio: "inherit",
+  });
 }
 
 const optionalDependencies = {};
