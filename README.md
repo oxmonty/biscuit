@@ -11,9 +11,11 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 ## Install
 
 ```sh
-brew tap oxmonty/tap && brew install biscuit-cli   # Homebrew
-npx biscuit-cli version                            # npm
+brew install oxmonty/tap/biscuit-cli   # Homebrew
+npx biscuit-cli version                # npm
 ```
+
+The fully-qualified brew name matters: since Homebrew 6, it trusts just this cask; a bare `brew install biscuit-cli` after tapping requires `brew trust oxmonty/tap` first.
 
 Or grab a binary from [GitHub Releases](https://github.com/oxmonty/biscuit/releases).
 

@@ -73,6 +73,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit, `biscuit generate`, 
 - [ ] **E10: npm distribution for generated CLIs** — generated CLIs install via `npm`/`npx`. → [Distribution](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#distribution)
     - [ ] Template the shim, per-platform packages, and ordered OIDC publish job.
 - [ ] **E11: Adoption** — Stainless-generated repos migrate to biscuit in one command. → [Stainless gaps and migration opportunity](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#stainless-gaps-and-migration-opportunity)
+    - [ ] Submit biscuit-cli to homebrew/core (or homebrew/cask) once notability criteria are met — drops the tap prefix and Homebrew 6 tap-trust friction from installs; revisit the npm bare-name dispute at the same time.
     - [ ] Ship `biscuit adopt --repo --spec` proposing a parity-maximizing config and taking over the release pipeline.
     - [ ] Add star history graph to README.md
 
