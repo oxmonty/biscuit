@@ -17,12 +17,12 @@ Usable two ways:
 
 ## Roadmap
 
-- [ ] **E1: Walking skeleton** — biscuit itself installs via Homebrew and npm and runs end-to-end, doing almost nothing yet. → [CI/CD](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#cicd), [Distribution](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#distribution) `v0.1.0-alpha.1`
-    - [ ] Scaffold the generator repo: module layout, cobra root, `biscuit version` and `--help` + CLAUDE.md file
-    - [ ] Wire CI and releases: release-please + goreleaser cross-platform builds to GitHub Releases.
-    - [ ] Publish the Homebrew tap so `brew install` works.
-    - [ ] Publish `biscuit-cli` to npm (shim + platform optionalDependencies) so `npx biscuit-cli` works.
-    - [ ] _(Same mechanics later templated into generated CLIs in E10 — this epic proves them on biscuit itself.)_
+- [x] **E1: Walking skeleton** — biscuit itself installs via Homebrew and npm and runs end-to-end, doing almost nothing yet. → [CI/CD](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#cicd), [Distribution](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#distribution) `v0.1.0-alpha.3`
+    - [x] Scaffold the generator repo: module layout, cobra root, `biscuit version` and `--help` + CLAUDE.md file
+    - [x] Wire CI and releases: release-please + goreleaser cross-platform builds to GitHub Releases.
+    - [x] Publish the Homebrew tap so `brew install` works.
+    - [x] Publish `biscuit-cli` to npm (shim + platform optionalDependencies) so `npx biscuit-cli` works.
+    - [x] _(Same mechanics later templated into generated CLIs in E10 — this epic proves them on biscuit itself.)_
 - [ ] **E2: Spec ingestion and IR** — an OpenAPI 3.x spec parses into a deterministic, immutable IR, with quality diagnosed before generation. → [Project structure](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#project-structure-the-generator), [Generation pipeline](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#generation-pipeline-and-concurrency-model), [Spec quality gate](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#spec-quality-gate-biscuit-doctor)
     - [ ] Parse and validate specs with `pb33f/libopenapi`, resolving `$ref`s.
     - [ ] Define IR types with all collections sorted at mapping time.
@@ -381,7 +381,7 @@ distribution:
     package: "biscuit-cli"   # npm name ≠ command name; bin stays `biscuit`
 ```
 
-**Naming note:** `biscuit` is taken on npm. Do **not** ship a misspelling (`biscut` — donates the typo funnel to a stranger's package, reads as an error, only fixes one registry). Use `biscuit-cli` or a scope; the `bin` field keeps the command `biscuit`. Check the abandoned-package dispute route in parallel. Also aware of: biscuit-auth (security tokens) — different space, coexistence fine, check before printing stickers.
+**Naming note:** biscuit itself ships as `biscuit-cli` on both registries — bare `biscuit` is squatted on npm and is the Biscuit browser cask in homebrew/cask — with the `bin`/cask `binaries` field keeping the command `biscuit`. The abandoned-npm-package dispute route gets revisited alongside the homebrew/core submission (E11). Generated CLIs hitting the same collision follow the same pattern; never ship a misspelling (`biscut` — donates the typo funnel to a stranger's package, reads as an error, only fixes one registry). Also aware of: biscuit-auth (security tokens) — different space, coexistence fine, check before printing stickers.
 
 ---
 
@@ -475,5 +475,3 @@ Stainless announced (May 2026) it is joining Anthropic and **winding down its ho
 - Parser: `pb33f/libopenapi` vs `speakeasy-api/openapi` (spike both on openai.yaml in E2; each brings its linter sibling — vacuum vs Speakeasy's 60+-rule linter — so the choice is parser+doctor as a pair).
 - Config overrides: `biscuit.yaml` vs `x-biscuit-*` extensions vs standard OpenAPI Overlays.
 - Doctor default advisory set: which vacuum rules map to generation impact vs noise (tune on the test-ladder specs).
-- npm package name: `biscuit-cli` vs scoped — check availability; dispute route for bare `biscuit` in parallel.
-- ~~Homebrew formula name availability for bare `biscuit`~~ — resolved 2026-07: taken by the Biscuit browser cask in homebrew/cask; ship as `biscuit-cli` (matches npm, binary stays `biscuit`).
