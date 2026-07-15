@@ -52,6 +52,7 @@ Usable two ways:
     - [ ] Implement help-tree diffing of command surfaces.
     - [ ] Run golden-request comparison against openai-cli as the hard rung (PRs touching mapping/templates).
     - [ ] Ship `biscuit bench --against <repo>` emitting the parity report.
+    - [ ] Legal: engage an OSS solicitor to finalise GPLv2-or-later + the generated-output exception (plain GPL-2.0 LICENSE shipped as fallback since v0.1.0-alpha.1); must land before v0.1.
 
 ---
 

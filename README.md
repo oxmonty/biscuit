@@ -26,4 +26,4 @@ biscuit --help
 
 ## License
 
-GPL-2.0-or-later, with a planned generated-output exception (generated code belongs entirely to you). Final license text pending.
+[GPL-2.0-or-later](LICENSE). A generated-output exception is planned (output produced by biscuit, including code derived from its templates, will belong entirely to you under any license you choose); final wording pending legal review.
