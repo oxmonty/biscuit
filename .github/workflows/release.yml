@@ -47,17 +47,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
       - name: Update npm
         # trusted publishing (OIDC) needs npm >= 11.5; node 22 bundles npm 10
         run: npm install -g npm@latest
       - name: Publish npm packages
-        # platform packages first, then the biscuit-cli shim (order matters:
-        # the shim's optionalDependencies must be resolvable when it lands)
+        # auth is npm trusted publishing (OIDC) — no token, no registry-url:
+        # setup-node's registry-url writes an .npmrc auth line that shadows OIDC.
+        # platform packages publish first, then the biscuit-cli shim (order
+        # matters: the shim's optionalDependencies must be resolvable when it lands)
         run: node scripts/publish_npm.mjs "${TAG_NAME#v}"
         env:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-          # bootstrap only: trusted publishing (OIDC) can't be configured until a
-          # package exists, so the first release authenticates with this token.
-          # Once OIDC is set up on all packages, delete the secret.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
