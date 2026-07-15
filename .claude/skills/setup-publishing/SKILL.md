@@ -1,6 +1,6 @@
 ---
 name: setup-publishing
-description: Step-by-step wizard for the one-time human setup that makes this repo's release pipeline publish to Homebrew and npm. Use when setting up a freshly generated (or freshly adopted) CLI repo, when a release run fails on missing secrets/permissions/trusted publishing, or when the user asks how to set up brew/npm publishing.
+description: Step-by-step wizard for the one-time human setup that makes this repo's release pipeline publish to Homebrew and npm. Use when setting up a freshly generated (or freshly adopted) CLI repo, when a release run fails on missing secrets/permissions/trusted publishing, when the user asks how to set up brew/npm publishing, or when graduating from prerelease (alpha) to the first stable release.
 ---
 
 # Set up Homebrew + npm publishing
@@ -116,3 +116,23 @@ List every package URL for the user, then gate with AskUserQuestion.
 
 Close by summarizing what is now automated (every future release) versus what was
 one-time (everything above).
+
+## Later — graduating from prerelease to stable
+
+Not part of setup; do this when the user decides the first stable release is ready.
+release-please never graduates on its own — with prerelease versioning enabled it
+increments the prerelease counter forever (alpha.4, alpha.5, ...).
+
+1. Remove `"prerelease": true` (and any `"prerelease-type"`) from
+   `release-please-config.json` and commit. The next release PR proposes the stable
+   version. To force a specific version instead, use a commit footer:
+   `Release-As: 0.1.0`.
+2. Everything downstream keys off the version string — no other changes needed:
+   - goreleaser `release.prerelease: auto` stops marking GitHub releases prerelease.
+   - The stable cask (`skip_upload: auto`) resumes updating; the `@alpha` cask keeps
+     tracking every release.
+   - The npm publish script derives the dist-tag from the version: no prerelease
+     suffix → publishes to `latest`. Manual `npm dist-tag add` promotions stop.
+3. While still pre-stable, remind the user that npm `latest` only moves manually:
+   `npm dist-tag add <shim-package>@<version> latest` after each alpha they want
+   promoted.
