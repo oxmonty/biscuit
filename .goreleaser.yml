@@ -49,6 +49,9 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     binaries: [biscuit] # cask is named biscuit-cli; the archive's binary is not
+    caveats: |
+      The installed command is `biscuit` (not biscuit-cli). Get started with:
+        biscuit --help
     homepage: https://github.com/oxmonty/biscuit
     description: Generate a production-ready CLI repository from an OpenAPI 3.x spec
     # unsigned binaries: strip the quarantine attribute so macOS runs them
