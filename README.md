@@ -12,8 +12,10 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 
 ```sh
 brew install oxmonty/tap/biscuit-cli   # Homebrew
-npx biscuit-cli version                # npm
+npm install -g biscuit-cli             # npm (or one-off: npx biscuit-cli)
 ```
+
+Either way the installed command is `biscuit`.
 
 The fully-qualified brew name matters: since Homebrew 6, it trusts just this cask; a bare `brew install biscuit-cli` after tapping requires `brew trust oxmonty/tap` first.
 
