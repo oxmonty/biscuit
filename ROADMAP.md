@@ -472,4 +472,4 @@ Stainless announced (May 2026) it is joining Anthropic and **winding down its ho
 - Config overrides: `biscuit.yaml` vs `x-biscuit-*` extensions vs standard OpenAPI Overlays.
 - Doctor default advisory set: which vacuum rules map to generation impact vs noise (tune on the test-ladder specs).
 - npm package name: `biscuit-cli` vs scoped — check availability; dispute route for bare `biscuit` in parallel.
-- Homebrew formula name availability for bare `biscuit`.
+- ~~Homebrew formula name availability for bare `biscuit`~~ — resolved 2026-07: taken by the Biscuit browser cask in homebrew/cask; ship as `biscuit-cli` (matches npm, binary stays `biscuit`).
