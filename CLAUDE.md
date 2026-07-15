@@ -29,6 +29,8 @@ go run ./cmd/biscuit        # run the CLI locally
 
 ## Releases
 
-Conventional Commits → release-please accumulates a release PR → merging it tags `vX.Y.Z` → goreleaser builds cross-platform binaries, publishes GitHub Release + Homebrew tap cask → `scripts/publish_npm.mjs` publishes `@oxmonty/biscuit-<platform>-<arch>` packages then the `biscuit-cli` shim. Never tag or publish manually.
+Conventional Commits → release-please accumulates a release PR → merging it tags `vX.Y.Z` → goreleaser builds cross-platform binaries, publishes GitHub Release + Homebrew tap casks → `scripts/publish_npm.mjs` publishes `@oxmonty/biscuit-<platform>-<arch>` packages then the `biscuit-cli` shim. Never tag or publish manually.
+
+Release channels mirror each other across registries: stable = `biscuit-cli` cask (`skip_upload: auto`, untouched by prereleases) and npm `latest`; prerelease = `biscuit-cli@alpha` cask and npm `alpha` dist-tag. Promoting npm `latest` past a prerelease is manual (`npm dist-tag add`) until the first stable release.
 
 Publishing setup (done 2026-07): Homebrew publishes to `oxmonty/homebrew-tap` via the org-level `HOMEBREW_TAP_TOKEN` secret (fine-grained PAT, contents-write on the tap only). npm publishes via trusted publishing (OIDC) — each package's trusted publisher is this repo's `release.yaml` workflow; there is no npm token anywhere. A brand-new npm package can't use OIDC on its first publish: publish it once locally (`npm login` + `scripts/publish_npm.mjs`), then add the trusted publisher.

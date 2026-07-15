@@ -43,7 +43,7 @@ Usable two ways:
     - [ ] Add retries/backoff with `Retry-After`, the exit-code contract, and `--debug` with secret redaction.
 - [ ] **E5: Repo scaffolding** — `biscuit generate` emits a complete repo that builds and releases. → [Generated repo structure](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#generated-repo-structure), [Distribution](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#distribution), [Regeneration safety](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#regeneration-safety)
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`.
-    - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1).
+    - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@alpha` cask, mirroring npm dist-tags.
     - [ ] Generate README, shell completions (bash/zsh/fish/PowerShell), and man pages.
     - [ ] Generate SETUP.md documenting the one-time human publishing steps proven on biscuit itself: tap repo + contents-write PAT, org “allow Actions to create PRs” setting, npm 2FA, first-publish-is-local (OIDC needs an existing package), per-package trusted-publisher config with exact workflow filename.
     - [ ] Template a Claude Code skill (.claude/skills/setup-publishing) into generated repos: agent verifies the checkable setup via gh/npm (tap repo, secrets, org Actions setting, trusted publishers), runs the local bootstrap publish, and hands the user only the true browser steps with exact URLs and field values. SETUP.md stays as the human-readable fallback. (v1 lives in biscuit’s own .claude/skills/setup-publishing — template it from there.)
@@ -73,7 +73,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit, `biscuit generate`, 
     - [ ] Classify spec diffs into semver bumps feeding release-please.
     - [ ] Document the push topology (`repository_dispatch`) as a snippet.
 - [ ] **E10: npm distribution for generated CLIs** — generated CLIs install via `npm`/`npx`. → [Distribution](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#distribution)
-    - [ ] Template the shim, per-platform packages, and ordered OIDC publish job.
+    - [ ] Template the shim, per-platform packages, and ordered OIDC publish job, with prereleases published under their prerelease dist-tag (never `latest`).
 - [ ] **E11: Adoption** — Stainless-generated repos migrate to biscuit in one command. → [Stainless gaps and migration opportunity](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#stainless-gaps-and-migration-opportunity)
     - [ ] Submit biscuit-cli to homebrew/core (or homebrew/cask) once notability criteria are met — drops the tap prefix and Homebrew 6 tap-trust friction from installs; revisit the npm bare-name dispute at the same time.
     - [ ] Ship `biscuit adopt --repo --spec` proposing a parity-maximizing config and taking over the release pipeline.

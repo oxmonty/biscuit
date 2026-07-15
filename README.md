@@ -11,8 +11,13 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 ## Install
 
 ```sh
-brew install oxmonty/tap/biscuit-cli   # Homebrew
-npm install -g biscuit-cli             # npm (or one-off: npx biscuit-cli)
+# stable channel
+brew install oxmonty/tap/biscuit-cli
+npm install -g biscuit-cli             # or one-off: npx biscuit-cli
+
+# prerelease channel (recommended until v0.1 ships)
+brew install oxmonty/tap/biscuit-cli@alpha
+npm install -g biscuit-cli@alpha
 ```
 
 Either way the installed command is `biscuit`.

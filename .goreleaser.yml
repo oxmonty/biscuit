@@ -40,9 +40,12 @@ changelog:
 release:
   prerelease: auto
 
+# two channels mirroring npm's dist-tags: biscuit-cli tracks stable releases only
+# (like npm `latest`), biscuit-cli@alpha tracks every release (like npm `alpha`)
 homebrew_casks:
   # named biscuit-cli to match the npm package; the installed command stays `biscuit`
   - name: biscuit-cli
+    skip_upload: auto # prerelease tags leave the stable cask untouched
     repository:
       owner: oxmonty
       name: homebrew-tap
@@ -55,6 +58,25 @@ homebrew_casks:
     homepage: https://github.com/oxmonty/biscuit
     description: Generate a production-ready CLI repository from an OpenAPI 3.x spec
     # unsigned binaries: strip the quarantine attribute so macOS runs them
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/biscuit"]
+          end
+  - name: biscuit-cli@alpha
+    repository:
+      owner: oxmonty
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    binaries: [biscuit]
+    caveats: |
+      This is the prerelease channel; it conflicts with the stable biscuit-cli
+      cask (both install `biscuit`) — keep only one. Get started with:
+        biscuit --help
+    homepage: https://github.com/oxmonty/biscuit
+    description: Generate a production-ready CLI repository from an OpenAPI 3.x spec (prerelease channel)
     hooks:
       post:
         install: |
