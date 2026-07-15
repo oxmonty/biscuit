@@ -34,7 +34,7 @@ for (const b of binaries) {
   const arch = ARCH[b.goarch];
   if (!platform || !arch) continue;
 
-  const name = `@biscuit-cli/${platform}-${arch}`;
+  const name = `@monthy/biscuit-${platform}-${arch}`;
   const dir = path.join("dist", "npm", `${platform}-${arch}`);
   const binDir = path.join(dir, "bin");
   fs.mkdirSync(binDir, { recursive: true });

@@ -35,5 +35,5 @@ One-time setup (not yet done — required before the first release works):
 
 1. Create the `monthy-app/homebrew-tap` repo (empty, with a `Casks/` dir is fine).
 2. Add a `HOMEBREW_TAP_TOKEN` repo secret: fine-grained PAT (or GitHub App token) with contents write on the tap repo.
-3. Create the `biscuit-cli` npm org (for the `@biscuit-cli` scope) and reserve the unscoped `biscuit-cli` package name.
-4. Configure npm trusted publishing (OIDC) for `biscuit-cli` and each `@biscuit-cli/*` platform package, pointing at this repo's `release.yml` workflow. Until then, npm publish steps fail without an `NODE_AUTH_TOKEN`.
+3. Create the `monthy` npm org (shared home for biscuit's platform packages, published skills, and future Monthy packages). The unscoped `biscuit-cli` shim is claimed by its first publish.
+4. Add an `NPM_TOKEN` repo secret (granular automation token) for the bootstrap release, then configure npm trusted publishing (OIDC) for `biscuit-cli` and each `@monthy/biscuit-*` platform package against this repo's `release.yml` workflow and delete the token.
