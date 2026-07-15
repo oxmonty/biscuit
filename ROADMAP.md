@@ -45,6 +45,7 @@ Usable two ways:
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`.
     - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1).
     - [ ] Generate README, shell completions (bash/zsh/fish/PowerShell), and man pages.
+    - [ ] Generate SETUP.md documenting the one-time human publishing steps proven on biscuit itself: tap repo + contents-write PAT, org “allow Actions to create PRs” setting, npm 2FA, first-publish-is-local (OIDC needs an existing package), per-package trusted-publisher config with exact workflow filename.
     - [ ] Add compile-the-output CI (`go build ./...` on generated repos) and generated smoke tests.
 - [ ] **E6: Bench harness and test ladder** — parity vs openai-cli is measured and published, atop a graded integration suite. → [Validation strategy](https://claude.ai/chat/a2569c67-14bf-4787-b753-1be6f48407a9#validation-strategy-reverse-engineering-stainless) w bar chart pitting against openai-cli for results across: TBD (use mathplotlib)
     - [ ] Generate a mock server from any spec (routes + schema-valid canned responses + request recording).
