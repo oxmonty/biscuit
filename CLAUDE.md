@@ -2,7 +2,7 @@
 
 A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`). Self-hostable alternative to the wound-down Stainless CLI generator.
 
-`ROADMAP.md` is the design doc and source of truth — epics E1–E11, architecture, mapping heuristics, bench methodology, and open questions all live there. Read the relevant section before building anything.
+`ROADMAP.md` (epics E1–E12, MVP line, v0.1 release gates) and `PRD.md` (architecture, mapping heuristics, bench methodology, decision log) are the source of truth; every epic links to the PRD section that specifies it, and completed epics get a write-up in `docs/write-ups/`. Read the relevant PRD section before building anything.
 
 ## Commands
 
@@ -18,9 +18,9 @@ go run ./cmd/biscuit        # run the CLI locally
 - `internal/cli/` — cobra command definitions
 - `internal/version/` — version metadata, set by goreleaser ldflags
 - `npm/biscuit-cli/` — npm shim package (`npx biscuit-cli`); platform packages are built at release time by `scripts/publish_npm.mjs`
-- Planned (see ROADMAP.md project structure): `biscuit.go` public library API, `internal/{spec,lint,ir,mapping,render,bench}`, `templates/`, `testdata/`
+- Planned (see PRD.md project structure): `biscuit.go` public library API, `internal/{spec,lint,ir,mapping,render,bench}`, `templates/`, `testdata/`
 
-## Principles (from ROADMAP.md)
+## Principles (from PRD.md)
 
 - `biscuit.Generate(ctx, spec, cfg) → FilePlan` is a pure function; writing files is a separate `plan.Write(dir)` step.
 - Generation is deterministic: sort every IR slice at mapping time; each output file's bytes depend only on the IR.
