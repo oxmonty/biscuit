@@ -102,9 +102,9 @@ Every place biscuit manifests, and what's on each:
 
 |Surface|Primary user|What's on it|
 |---|---|---|
-|**biscuit CLI**|dev generating a CLI|`generate`, `doctor`, `bench`, `init`, `update`, `adopt` (E11); reads `biscuit.yaml`|
+|**biscuit CLI**|dev generating a CLI|`generate`, `doctor`, `bench`, `init`, `update`, `upgrade`, `adopt` (E11); reads `biscuit.yaml`|
 |**biscuit library**|tooling authors, future hosted API|`biscuit.Generate(ctx, spec, cfg) → FilePlan`, `plan.Write(dir)` — pure, no side effects|
-|**Generated CLI**|end users of the target API|resource/verb command tree, `--format`/`--transform`, `@file`, pagination, SSE, auth, completions, man pages|
+|**Generated CLI**|end users of the target API|resource/verb command tree, `--format`/`--transform`, `@file`, pagination, SSE, auth, completions, man pages, `upgrade`|
 |**Generated MCP server**|agents / MCP clients|`{binary} mcp serve` — one tool per operation, stdio + Streamable HTTP|
 |**Chat TUI**|humans, interactively|one Bubble Tea interface, three entry points: `mcp chat`, `{binary} chat`, interactive-TTY SSE|
 |**GitHub Action**|CI|update pipeline: fetch spec → regenerate → PR with `.biscuit-state.yml` provenance|
@@ -307,6 +307,7 @@ Of generated CLIs — all of this is templated into the output repo.
 - **GoReleaser** on release-please PR merge: macOS (arm64/amd64), Linux (arm64/amd64/386), Windows (arm64/amd64), published to GitHub Releases.
 - **Homebrew** tap, formula auto-updated. Tap token + macOS signing/notarization secrets in a `main`-scoped GitHub environment (Stainless's documented hardening). Homebrew 6 requires third-party taps to be trusted before first install (`brew tap --trust`, or a fully-qualified `brew install org/tap/name` which bypasses the prompt) — the generated README documents the trust step, and the friction is what makes the homebrew/core submission (E12) worth pursuing.
 - **npm**: per-platform `optionalDependencies` pattern (esbuild/Biome/Turborepo), _not_ postinstall downloads — works with `--ignore-scripts`, proxies, lockfiles. Main package's `bin` is a ~20-line shim resolving `@scope/cli-${platform}-${arch}` with `require.resolve` fallback error (pnpm/Yarn PnP quirk). Publish order: platform packages → main. npm trusted publishing via OIDC: a brand-new package can't OIDC on its first publish (bootstrap locally), trusted-publisher configs must explicitly allow publishing, and `npm trust` configures multiple packages in one command (npm ≥ 11.5.1, Node ≥ 22.14).
+- **Upgrade**: every generated CLI — and biscuit itself, where the mechanics are proven first — ships a channel-aware `{binary} upgrade`. Channel-aware in both senses: the *install* channel (Homebrew cellar path, npm global shim, bare binary) decides the mechanism — exec the package manager's own upgrade; self-download-and-swap only for bare binaries, so brew/npm always own the files they installed — and the *release* channel decides the target: a prerelease install upgrades within its npm dist-tag / `@alpha` cask, a stable install never crosses onto prereleases. The verbs stay distinct: `update` refetches the spec and regenerates ([Update pipeline](#update-pipeline)); `upgrade` bumps the tool itself.
 - Opt-in via config:
 
 ```yaml
