@@ -337,6 +337,8 @@ merge release PR → tag → goreleaser (darwin/linux/windows, arm64+amd64)
               → npm publish: platform packages, then biscuit-cli (OIDC trusted publishing)
 ```
 
+**Release speed:** the release job carries its own cross-compile build cache (`release-go-` key with a `restore-keys` prefix fallback) — the ci workflow's cache collides on the same go.sum key and only ever holds linux/amd64 objects, so without the dedicated key every release rebuilds all targets cold. Warm releases recompile only changed dependencies; within the job, goreleaser already parallelizes across cores. Templated into generated repos' release workflow by default — same 7-target build, same win. goreleaser Pro's `--split` per-platform matrix stays off the default path (a paid dependency generated repos shouldn't inherit); revisit only if warm-cache releases are still too slow.
+
 **Secrets & signing:** publish credentials in a `main`-scoped GitHub environment readable only by the release workflow (Stainless's documented hardening); npm via OIDC, no long-lived tokens; Homebrew tap token scoped to the tap repo; macOS signing/notarization keys same environment. Generated repos inherit this exact posture from templates.
 
 **Pinning contract:** generated repos' workflows pin their biscuit version; biscuit upgrades arrive as separate PRs from spec updates (see [Update pipeline](#update-pipeline)) — so biscuit's own release cadence never contaminates spec-diff review downstream.
