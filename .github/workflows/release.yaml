@@ -36,6 +36,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # setup-go's cache key collides with the ci workflow's (same go.sum),
+          # which only holds linux/amd64 objects — the cross-compile cache below
+          # needs its own key or every release rebuilds all targets cold
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: release-go-${{ hashFiles('go.sum') }}
+          restore-keys: release-go-
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
