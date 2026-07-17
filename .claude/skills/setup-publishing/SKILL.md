@@ -129,10 +129,10 @@ increments the prerelease counter forever (alpha.4, alpha.5, ...).
    `Release-As: 0.1.0`.
 2. Everything downstream keys off the version string — no other changes needed:
    - goreleaser `release.prerelease: auto` stops marking GitHub releases prerelease.
-   - The stable cask (`skip_upload: auto`) resumes updating; the `@alpha` cask keeps
+   - The stable cask (`skip_upload: auto`) resumes updating; the `@next` cask keeps
      tracking every release.
-   - The npm publish script derives the dist-tag from the version: no prerelease
-     suffix → publishes to `latest`. Manual `npm dist-tag add` promotions stop.
+   - The npm publish script keys the dist-tag off the version: any prerelease
+     suffix → `next`, no suffix → `latest`. Manual `npm dist-tag add` promotions stop.
 3. While still pre-stable, remind the user that npm `latest` only moves manually:
-   `npm dist-tag add <shim-package>@<version> latest` after each alpha they want
-   promoted.
+   `npm dist-tag add <shim-package>@<version> latest` after each prerelease they
+   want promoted.

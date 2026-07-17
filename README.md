@@ -16,8 +16,8 @@ brew install oxmonty/tap/biscuit-cli
 npm install -g biscuit-cli             # or one-off: npx biscuit-cli
 
 # prerelease channel (recommended until v0.1 ships)
-brew install oxmonty/tap/biscuit-cli@alpha
-npm install -g biscuit-cli@alpha
+brew install oxmonty/tap/biscuit-cli@next
+npm install -g biscuit-cli@next
 ```
 
 Either way the installed command is `biscuit`.

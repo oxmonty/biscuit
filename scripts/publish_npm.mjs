@@ -25,8 +25,10 @@ if (binaries.length === 0) {
 }
 
 // npm refuses to publish prereleases without an explicit dist-tag; without
-// this, `latest` would also end up pointing at an alpha
-const distTag = version.includes("-") ? version.split("-")[1].split(".")[0] : "latest";
+// this, `latest` would also end up pointing at a prerelease. Every prerelease
+// flows through the single `next` channel regardless of its semver identifier
+// (alpha/beta/rc) — maturity lives in the version string, not the tag list.
+const distTag = version.includes("-") ? "next" : "latest";
 
 function publish(dir) {
   execFileSync("npm", ["publish", "--access", "public", "--tag", distTag], {

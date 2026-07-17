@@ -41,7 +41,8 @@ release:
   prerelease: auto
 
 # two channels mirroring npm's dist-tags: biscuit-cli tracks stable releases only
-# (like npm `latest`), biscuit-cli@alpha tracks every release (like npm `alpha`)
+# (like npm `latest`), biscuit-cli@next tracks every release (like npm `next`) —
+# one prerelease channel for any maturity (alpha/beta/rc live in the version string)
 homebrew_casks:
   # named biscuit-cli to match the npm package; the installed command stays `biscuit`
   - name: biscuit-cli
@@ -64,7 +65,7 @@ homebrew_casks:
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/biscuit"]
           end
-  - name: biscuit-cli@alpha
+  - name: biscuit-cli@next
     repository:
       owner: oxmonty
       name: homebrew-tap
