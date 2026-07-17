@@ -45,6 +45,7 @@ Usable two ways:
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`, defining the stable surface custom code may depend on.
     - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@next` cask mirroring the npm `next` dist-tag — one prerelease channel for any maturity (alpha/beta/rc live in the version string) — and the release job's dedicated cross-compile build cache (proven on biscuit; see [CI/CD](PRD.md#cicd)).
     - [ ] Generate README (documenting the Homebrew 6 tap-trust step), shell completions (bash/zsh/fish/PowerShell), and man pages.
+    - [ ] Ship biscuit's own man pages and packaged shell completions (cobra's generators, bundled into release archives and casks so `man biscuit` works post-install) — proving the mechanics the story above templates into generated repos.
     - [ ] Template the Makefile into generated repos (proven on biscuit's own): sectioned awk help headed by the binary name with the description on the line beneath it, sourced from the spec (`info.title`/`info.description` via the IR, `biscuit.yaml` overrides winning, lines omitted when the spec has neither), with build/run/check/lint/bench/snapshot/gacp targets mapped to the generated project.
     - [ ] Ship channel-aware `biscuit upgrade` (alias `update` — synonyms in the wild) and template the same command into generated CLIs: detect the install channel (brew/npm/bare binary) and release channel (stable vs next), exec the package manager's own upgrade, self-swap only bare binaries; `--channel` and `--version` for explicit channel crossing and exact pins. → [Distribution](PRD.md#distribution)
     - [ ] Harden biscuit's own `install.sh` ahead of templating: checksum verification against the release's `checksums.txt`, a clear error on a bad `--version`, and a `--binary <path>` local-install override for testing.
@@ -65,7 +66,8 @@ Usable two ways:
     - [ ] Implement help-tree diffing of command surfaces — tier 1 (verify openai-cli's help output parses first; per-target adapter if it isn't stock cobra).
     - [ ] Run golden-request comparison against openai-cli on the spec-generated mock — tier 2, the hard rung (PRs touching mapping/templates); tier 3 file-tree similarity rides the same run.
     - [ ] Ship `biscuit bench --against <repo>` emitting the parity report: per-tier scores with the `--min-parity` CI ratchet and `expected: ours|theirs|either` corpus annotations; publish the dated, spec/CLI-SHA-paired scores as a per-tier bar chart in biscuit's README (SVG rendered by the bench harness itself, no Python dependency).
-    - [ ] Write biscuit's README quickstart and commit `examples/` (petstore-cli plus one real-world spec) as browsable generated output.
+    - [ ] Stand up the cross-generator benchmark: spike what [Fern's CLI generator](https://buildwithfern.com/cli) and Speakeasy's tooling actually produce for petstore + train-travel (both account-gated — capability gaps are findings, charted as zero and footnoted), then score biscuit/Fern/Speakeasy output against the same spec-generated mock on the six absolute metrics. → [Bench metrics](PRD.md#bench-metrics-cross-generator)
+    - [ ] Write biscuit's README quickstart and commit `examples/` (petstore-cli plus one real-world spec) as browsable generated output, leading with the biscuit-vs-Fern-vs-Speakeasy six-metric bar chart above the Stainless parity chart.
 
 ---
 
@@ -79,7 +81,8 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
 - [ ] **E7: MCP serve** — every generated CLI is an MCP server. → [MCP subcommand](PRD.md#mcp-subcommand)
     - [ ] Map operations to MCP tools and serve over stdio, then Streamable HTTP, on the official `modelcontextprotocol/go-sdk`, pinning the targeted MCP protocol revision.
 - [ ] **E8: Chat TUI** — one Bubble Tea interface backs `mcp chat`, `{binary} chat`, and interactive SSE. → [Protocol scope](PRD.md#protocol-scope), [MCP subcommand](PRD.md#mcp-subcommand), [Spec discovery](PRD.md#spec-discovery)
-    - [ ] Build the TUI with streaming and tool-call display, recreating the UX of [pi](https://github.com/earendil-works/pi) in Go.
+    - [ ] Spike the TUI substrate: port/reuse [pi](https://github.com/earendil-works/pi)'s TypeScript UI against the MCP server and chat endpoint (companion npm package or sidecar — weigh reuse against breaking the single-static-binary spine) vs recreating it in Go/Bubble Tea; record the verdict in the PRD decision log before building.
+    - [ ] Build the TUI with streaming and tool-call display per the spike verdict, recreating the UX of [pi](https://github.com/earendil-works/pi).
     - [ ] Add Anthropic and OpenAI providers behind a two-provider interface.
     - [ ] Detect chat-shaped endpoints and emit the `{binary} chat` REPL.
     - [ ] Route interactive-TTY SSE responses into the TUI.
