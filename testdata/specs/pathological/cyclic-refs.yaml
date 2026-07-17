@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Cyclic Refs
+  version: 1.0.0
+paths:
+  /a:
+    get:
+      operationId: getA
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A'
+components:
+  schemas:
+    A:
+      type: object
+      properties:
+        name:
+          type: string
+        b:
+          $ref: '#/components/schemas/B'
+    B:
+      type: object
+      properties:
+        name:
+          type: string
+        a:
+          $ref: '#/components/schemas/A'
+    Self:
+      type: object
+      properties:
+        name:
+          type: string
+        child:
+          $ref: '#/components/schemas/Self'

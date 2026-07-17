@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+  title: Unresolvable Refs
+  version: 1.0.0
+paths:
+  /missing-local:
+    get:
+      operationId: getMissingLocal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DoesNotExist'
+  /missing-external:
+    get:
+      operationId: getMissingExternal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: './does-not-exist.yaml#/components/schemas/X'
+components:
+  schemas:
+    Placeholder:
+      type: object
+      properties:
+        name:
+          type: string
