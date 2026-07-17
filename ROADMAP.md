@@ -25,13 +25,13 @@ Usable two ways:
     - [x] Publish `biscuit-cli` to npm (shim + platform optionalDependencies) so `npx biscuit-cli` works.
     - [x] _(Same mechanics later templated into generated CLIs in E4/E10 — this epic proves them on biscuit itself.)_
 - [ ] **E2: Spec ingestion and IR** — a released biscuit parses any OpenAPI 3.x spec into a deterministic, immutable IR, and `biscuit doctor` grades it. → [Project structure](PRD.md#project-structure-the-generator), [Generation pipeline](PRD.md#generation-pipeline-and-concurrency-model), [Spec quality gate](PRD.md#spec-quality-gate-biscuit-doctor), [Spec discovery](PRD.md#spec-discovery)
-    - [ ] Spike `pb33f/libopenapi` vs `speakeasy-api/openapi` in `spike/`, both parsing openai.yaml, scored against defined metrics (cycle-safe `$ref` resolution, 3.0/3.1 handling, parse time/memory, API ergonomics, governance/bus-factor); the winner and its linter sibling become the parser and doctor engine.
-    - [ ] Parse and validate specs with the spike-chosen parser, resolving `$ref`s cycle-safely, with biscuit's own exit-code contract so scripts and pipelines get predictable failures.
-    - [ ] Make `--spec` optional: discover the spec by well-known names (`openapi|swagger.{yaml,yml,json}`) in the current directory (flat scan — deeper enumeration ships with E8's discovery UX), then content-sniff its remaining yaml/json (first ~1 KB) for an `openapi:` root key; on multiple matches list candidates and prompt (plain stderr); persist the choice to `spec.path` in `biscuit.yaml` so discovery runs once — the config is the cache.
-    - [ ] Define IR types with all collections sorted at mapping time, normalizing 3.0 and 3.1 (`nullable` vs `type` arrays, `example` vs `examples`) into one shape.
-    - [ ] Integrate the spike-chosen linter (vacuum or Speakeasy's) as `biscuit doctor`: blocking correctness errors, advisory quality report with generation-impact notes, `--strict` / `lint.min_grade` gate.
-    - [ ] Seed `testdata/specs` as a graded ladder: petstore (easy), a mid-size real-world 3.1 spec with oneOf/multi-auth/SSE (medium, e.g. Train Travel API), openai.yaml (hard), plus pathological cases including cyclic `$ref`s.
-    - [ ] Add the generation benchmark (`gen_bench_test.go`) from day one.
+    - [x] Spike `pb33f/libopenapi` vs `speakeasy-api/openapi` in `spike/`, both parsing openai.yaml, scored against defined metrics (cycle-safe `$ref` resolution, 3.0/3.1 handling, parse time/memory, API ergonomics, governance/bus-factor); the winner and its linter sibling become the parser and doctor engine.
+    - [x] Parse and validate specs with the spike-chosen parser, resolving `$ref`s cycle-safely, with biscuit's own exit-code contract so scripts and pipelines get predictable failures.
+    - [x] Make `--spec` optional: discover the spec by well-known names (`openapi|swagger.{yaml,yml,json}`) in the current directory (flat scan — deeper enumeration ships with E8's discovery UX), then content-sniff its remaining yaml/json (first ~1 KB) for an `openapi:` root key; on multiple matches list candidates and prompt (plain stderr); persist the choice to `spec.path` in `biscuit.yaml` so discovery runs once — the config is the cache.
+    - [x] Define IR types with all collections sorted at mapping time, normalizing 3.0 and 3.1 (`nullable` vs `type` arrays, `example` vs `examples`) into one shape.
+    - [x] Integrate the spike-chosen linter (vacuum or Speakeasy's) as `biscuit doctor`: blocking correctness errors, advisory quality report with generation-impact notes, `--strict` / `lint.min_grade` gate.
+    - [x] Seed `testdata/specs` as a graded ladder: petstore (easy), a mid-size real-world 3.1 spec with oneOf/multi-auth/SSE (medium, e.g. Train Travel API), openai.yaml (hard), plus pathological cases including cyclic `$ref`s.
+    - [x] Add the generation benchmark (`gen_bench_test.go`) from day one.
 - [ ] **E3: Mapping and config** — a released `biscuit generate --dry-run` prints the derived command surface for any spec, overridable via `biscuit.yaml`. → [Command grammar](PRD.md#command-grammar), [Argument parsing](PRD.md#argument-parsing)
     - [ ] Derive the resource/verb tree from tags and paths, including nested sub-resources and stutter removal.
     - [ ] Implement flag flattening with the schema-adaptive dot-notation depth policy, cycle detection, and a hard depth bound.
@@ -85,7 +85,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
     - [ ] Ship the biscuit-upgrade PR flow so tool bumps arrive as a separate PR species from spec updates.
     - [ ] Document the push topology (`repository_dispatch`) as a snippet.
 - [ ] **E10: npm distribution for generated CLIs** — generated CLIs install via `npm`/`npx`. → [Distribution](PRD.md#distribution)
-    - [ ] Template the shim, per-platform packages, and ordered OIDC publish job, with prereleases published under their prerelease dist-tag (never `latest`).
+    - [ ] Template the shim, per-platform packages, and ordered OIDC publish job, with prereleases published under the `next` dist-tag (never `latest`).
 - [ ] **E11: Adoption** — Stainless-generated repos migrate to biscuit in one command. → [Competitive landscape](PRD.md#competitive-landscape)
     - [ ] Ship `biscuit adopt --repo --spec` proposing a parity-maximizing config and taking over the release pipeline.
 - [ ] **E12: Registry reach** — installs drop the tap prefix and trust prompt. → [Distribution](PRD.md#distribution)
