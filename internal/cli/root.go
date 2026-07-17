@@ -16,6 +16,9 @@ func NewRootCommand() *cobra.Command {
 	}
 	// bare version for --version (script/agent-friendly); `biscuit version` has the detail
 	root.SetVersionTemplate("{{.Version}}\n")
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &usageError{err}
+	})
 	root.AddCommand(newVersionCommand())
 	return root
 }
