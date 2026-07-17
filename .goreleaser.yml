@@ -54,8 +54,13 @@ homebrew_casks:
     directory: Casks
     binaries: [biscuit] # cask is named biscuit-cli; the archive's binary is not
     caveats: |
-      The installed command is `biscuit` (not biscuit-cli). Get started with:
-        biscuit --help
+      Installed command: biscuit   (stable channel)
+
+        Get started:          biscuit --help
+        Upgrade:              brew upgrade biscuit-cli
+        Prerelease channel:   brew uninstall --cask biscuit-cli && brew install oxmonty/tap/biscuit-cli@next
+
+      Conflicts with biscuit-cli@next (both install `biscuit`) — keep only one.
     homepage: https://github.com/oxmonty/biscuit
     description: Generate a production-ready CLI repository from an OpenAPI 3.x spec
     # unsigned binaries: strip the quarantine attribute so macOS runs them
@@ -73,9 +78,13 @@ homebrew_casks:
     directory: Casks
     binaries: [biscuit]
     caveats: |
-      This is the prerelease channel; it conflicts with the stable biscuit-cli
-      cask (both install `biscuit`) — keep only one. Get started with:
-        biscuit --help
+      Installed command: biscuit   (prerelease channel — alpha/beta/rc builds)
+
+        Get started:        biscuit --help
+        Upgrade:            brew upgrade biscuit-cli@next
+        Switch to stable:   brew uninstall --cask biscuit-cli@next && brew install oxmonty/tap/biscuit-cli
+
+      Conflicts with the stable biscuit-cli cask (both install `biscuit`) — keep only one.
     homepage: https://github.com/oxmonty/biscuit
     description: Generate a production-ready CLI repository from an OpenAPI 3.x spec (prerelease channel)
     hooks:
