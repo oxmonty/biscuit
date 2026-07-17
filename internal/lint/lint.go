@@ -76,19 +76,38 @@ func Run(doc *spec.Document) *Report {
 		Grade: statistics.CalculateQualityScore(model.NewRuleResultSet(execution.Results)),
 	}
 	for _, r := range execution.Results {
+		severity := r.RuleSeverity
+		if severity == "" {
+			severity = "info" // vacuum's circular-references rule leaves this blank
+		}
 		report.Findings = append(report.Findings, Finding{
 			Rule:     r.RuleId,
-			Severity: r.RuleSeverity,
+			Severity: severity,
 			Message:  r.Message,
 			Line:     r.Range.Start.Line,
 			Impact:   impact[r.RuleId],
 		})
 	}
 	sort.Slice(report.Findings, func(i, j int) bool {
-		if report.Findings[i].Rule != report.Findings[j].Rule {
-			return report.Findings[i].Rule < report.Findings[j].Rule
+		a, b := report.Findings[i], report.Findings[j]
+		if ra, rb := severityRank(a.Severity), severityRank(b.Severity); ra != rb {
+			return ra < rb
 		}
-		return report.Findings[i].Line < report.Findings[j].Line
+		if a.Rule != b.Rule {
+			return a.Rule < b.Rule
+		}
+		return a.Line < b.Line
 	})
 	return report
+}
+
+func severityRank(severity string) int {
+	switch severity {
+	case "error":
+		return 0
+	case "warn":
+		return 1
+	default:
+		return 2
+	}
 }

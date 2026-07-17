@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v4"
@@ -43,6 +42,9 @@ func newDoctorCommand() *cobra.Command {
 			for _, d := range doc.Diagnostics {
 				_, _ = fmt.Fprintf(out, "  [info] %s\n", d)
 			}
+			if len(report.Findings) > 0 {
+				printSummary(out, report.Findings)
+			}
 
 			minGrade := loadMinGrade()
 			switch {
@@ -78,7 +80,6 @@ func printGrouped(out io.Writer, findings []lint.Finding) {
 		}
 		g.count++
 	}
-	sort.Strings(order)
 	for _, rule := range order {
 		g := groups[rule]
 		_, _ = fmt.Fprintf(out, "  [%s] %d× %s — e.g. %s\n", g.severity, g.count, rule, g.first.Message)
@@ -86,6 +87,23 @@ func printGrouped(out io.Writer, findings []lint.Finding) {
 			_, _ = fmt.Fprintf(out, "        → %s\n", g.first.Impact)
 		}
 	}
+}
+
+// printSummary prints one footer line with per-severity counts and the gate
+// hint, so a run with no --strict / lint.min_grade set doesn't read as clean.
+func printSummary(out io.Writer, findings []lint.Finding) {
+	var errors, warnings, info int
+	for _, f := range findings {
+		switch f.Severity {
+		case "error":
+			errors++
+		case "warn":
+			warnings++
+		default:
+			info++
+		}
+	}
+	_, _ = fmt.Fprintf(out, "%d errors, %d warnings, %d info — advisory only, generation not blocked (gate with --strict or lint.min_grade)\n", errors, warnings, info)
 }
 
 // loadMinGrade reads lint.min_grade from ./biscuit.yaml if present.
