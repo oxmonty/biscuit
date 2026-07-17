@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.0-alpha.4](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.3...v0.1.0-alpha.4) (2026-07-17)
+
+
+### Features
+
+* add setup-publishing skill guiding the one-time release setup ([e4a069f](https://github.com/oxmonty/biscuit/commit/e4a069fff353759bc725a2f11dc4721e4c622c18))
+* **doctor:** grade specs with vacuum and generation-impact notes ([7554d1e](https://github.com/oxmonty/biscuit/commit/7554d1e5aef3bd469d5e9abaf1120506bcc12880))
+* **ir:** define the IR and map specs into it deterministically ([a93c035](https://github.com/oxmonty/biscuit/commit/a93c0354948497b67be67b567fbbf432d57fa8f0))
+* **release:** add stable and alpha Homebrew channels mirroring npm dist-tags ([1edcafd](https://github.com/oxmonty/biscuit/commit/1edcafd54c784de5865cbc5ec6d03f9b28ff6755))
+* **spec:** discover the spec when --spec is absent ([7629ae4](https://github.com/oxmonty/biscuit/commit/7629ae4eafc9b650f50fb8a20dfb147f8b4e9ba3))
+* **spec:** load OpenAPI 3.x specs with the exit-code contract ([a5c249d](https://github.com/oxmonty/biscuit/commit/a5c249d922e77831a03d2e5f6ccf3d2b8cfaa5d5))
+
+
+### Bug Fixes
+
+* **lint:** check or discard writer error returns flagged by errcheck ([ca1ca7c](https://github.com/oxmonty/biscuit/commit/ca1ca7c655d89086c08332254f00a6fe2263f223))
+
 ## [0.1.0-alpha.3](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.2...v0.1.0-alpha.3) (2026-07-15)
 
 
