@@ -24,6 +24,12 @@ Either way the installed command is `biscuit`.
 
 The fully-qualified brew name matters: since Homebrew 6, it trusts just this cask; a bare `brew install biscuit-cli` after tapping requires `brew trust oxmonty/tap` first.
 
+No package manager? Install directly:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/oxmonty/biscuit/main/install.sh | bash
+```
+
 Or grab a binary from [GitHub Releases](https://github.com/oxmonty/biscuit/releases).
 
 ## Usage
