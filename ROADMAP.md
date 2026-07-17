@@ -80,9 +80,10 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
 
 - [ ] **E7: MCP serve** — every generated CLI is an MCP server. → [MCP subcommand](PRD.md#mcp-subcommand)
     - [ ] Map operations to MCP tools and serve over stdio, then Streamable HTTP, on the official `modelcontextprotocol/go-sdk`, pinning the targeted MCP protocol revision.
+    - [ ] Template a project-scope `.mcp.json` into generated repos so opening one in Claude Code wires the CLI's tools automatically — zero-command team onboarding. → [MCP subcommand](PRD.md#mcp-subcommand)
 - [ ] **E8: Chat TUI** — one Bubble Tea interface backs `mcp chat`, `{binary} chat`, and interactive SSE. → [Protocol scope](PRD.md#protocol-scope), [MCP subcommand](PRD.md#mcp-subcommand), [Spec discovery](PRD.md#spec-discovery)
-    - [ ] Spike the TUI substrate: port/reuse [pi](https://github.com/earendil-works/pi)'s TypeScript UI against the MCP server and chat endpoint (companion npm package or sidecar — weigh reuse against breaking the single-static-binary spine) vs recreating it in Go/Bubble Tea; record the verdict in the PRD decision log before building.
-    - [ ] Build the TUI with streaming and tool-call display per the spike verdict, recreating the UX of [pi](https://github.com/earendil-works/pi).
+    - [ ] Spike the MCP-client integration that the chat strategy leans on: drive a generated `{binary} mcp serve` from Claude Code, Warp, and [pi](https://github.com/earendil-works/pi) end to end (tool discovery, streaming, env auth, stdio and Streamable HTTP) — rich chat UX belongs to these clients, not an owned TUI; if they can't carry it, the pi-port question reopens with evidence. → [MCP subcommand](PRD.md#mcp-subcommand)
+    - [ ] Build the minimal built-in TUI — serviceable, not spectacular — with streaming and tool-call display, stealing the UX decisions of [pi](https://github.com/earendil-works/pi) on Bubble Tea.
     - [ ] Add Anthropic and OpenAI providers behind a two-provider interface.
     - [ ] Detect chat-shaped endpoints and emit the `{binary} chat` REPL.
     - [ ] Route interactive-TTY SSE responses into the TUI.
