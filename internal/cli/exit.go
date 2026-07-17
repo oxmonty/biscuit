@@ -28,6 +28,7 @@ func (u *usageError) Unwrap() error { return u.err }
 func ExitCode(err error) int {
 	var invalid *spec.InvalidError
 	var usage *usageError
+	var gate *qualityGateError
 	switch {
 	case err == nil:
 		return ExitOK
@@ -37,6 +38,8 @@ func ExitCode(err error) int {
 		return ExitNoSpec
 	case errors.As(err, &invalid):
 		return ExitSpecInvalid
+	case errors.As(err, &gate):
+		return ExitQualityGate
 	default:
 		return ExitInternal
 	}
