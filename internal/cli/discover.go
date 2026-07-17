@@ -32,7 +32,7 @@ func resolveSpecPath(cmd *cobra.Command, flag string) (string, error) {
 			return "", err
 		}
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "using spec %s (recorded in biscuit.yaml)\n", choice)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "using spec %s (recorded in biscuit.yaml)\n", choice)
 	if err := spec.PersistSpecPath(".", choice); err != nil {
 		return "", err
 	}
@@ -49,11 +49,11 @@ func pickCandidate(cmd *cobra.Command, candidates []string) (string, error) {
 		return candidates[0], nil
 	}
 
-	fmt.Fprintln(cmd.ErrOrStderr(), "multiple specs found:")
+	_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "multiple specs found:")
 	for i, c := range candidates {
-		fmt.Fprintf(cmd.ErrOrStderr(), "  %d) %s\n", i+1, c)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %d) %s\n", i+1, c)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "which one? [1]: ")
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "which one? [1]: ")
 
 	var answer int
 	if _, err := fmt.Fscanln(cmd.InOrStdin(), &answer); err != nil || answer < 1 || answer > len(candidates) {

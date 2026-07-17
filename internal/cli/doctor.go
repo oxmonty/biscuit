@@ -38,10 +38,10 @@ func newDoctorCommand() *cobra.Command {
 
 			report := lint.Run(doc)
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "%s — grade %d/100\n", doc.Path, report.Grade)
+			_, _ = fmt.Fprintf(out, "%s — grade %d/100\n", doc.Path, report.Grade)
 			printGrouped(out, report.Findings)
 			for _, d := range doc.Diagnostics {
-				fmt.Fprintf(out, "  [info] %s\n", d)
+				_, _ = fmt.Fprintf(out, "  [info] %s\n", d)
 			}
 
 			minGrade := loadMinGrade()
@@ -81,9 +81,9 @@ func printGrouped(out io.Writer, findings []lint.Finding) {
 	sort.Strings(order)
 	for _, rule := range order {
 		g := groups[rule]
-		fmt.Fprintf(out, "  [%s] %d× %s — e.g. %s\n", g.severity, g.count, rule, g.first.Message)
+		_, _ = fmt.Fprintf(out, "  [%s] %d× %s — e.g. %s\n", g.severity, g.count, rule, g.first.Message)
 		if g.first.Impact != "" {
-			fmt.Fprintf(out, "        → %s\n", g.first.Impact)
+			_, _ = fmt.Fprintf(out, "        → %s\n", g.first.Impact)
 		}
 	}
 }

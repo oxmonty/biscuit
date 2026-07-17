@@ -90,7 +90,7 @@ func sniffsAsOpenAPI(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	head := make([]byte, 1024)
 	n, _ := f.Read(head)
 	head = head[:n]
