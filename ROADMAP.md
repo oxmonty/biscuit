@@ -12,7 +12,7 @@ biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
 Usable two ways:
 
 - **Library**: `import "github.com/oxmonty/biscuit"` → `biscuit.Generate(ctx, spec, cfg)` returns a file plan
-- **CLI**: `biscuit generate | doctor | bench | init | update`
+- **CLI**: `biscuit generate | doctor | bench | init | upgrade`
 
 ---
 
@@ -43,7 +43,7 @@ Usable two ways:
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`, defining the stable surface custom code may depend on.
     - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@alpha` cask, mirroring npm dist-tags.
     - [ ] Generate README (documenting the Homebrew 6 tap-trust step), shell completions (bash/zsh/fish/PowerShell), and man pages.
-    - [ ] Ship channel-aware `biscuit upgrade` and template the same command into generated CLIs: detect the install channel (brew/npm/bare binary) and release channel (stable vs alpha), exec the package manager's own upgrade, self-swap only bare binaries. → [Distribution](PRD.md#distribution)
+    - [ ] Ship channel-aware `biscuit upgrade` (alias `update` — synonyms in the wild) and template the same command into generated CLIs: detect the install channel (brew/npm/bare binary) and release channel (stable vs alpha), exec the package manager's own upgrade, self-swap only bare binaries; `--channel` and `--version` for explicit channel crossing and exact pins. → [Distribution](PRD.md#distribution)
     - [ ] Generate SETUP.md documenting the one-time human publishing steps proven on biscuit itself: tap repo + contents-write PAT, org "allow Actions to create PRs" setting, npm 2FA, first-publish-is-local (OIDC needs an existing package), `npm trust` for the trusted-publisher config.
     - [ ] Template a Claude Code skill (.claude/skills/setup-publishing) into generated repos: agent verifies the checkable setup via gh/npm (tap repo, secrets, org Actions setting, trusted publishers), runs the local bootstrap publish, and hands the user only the true browser steps with exact URLs and field values. SETUP.md stays as the human-readable fallback. (v1 lives in biscuit's own .claude/skills/setup-publishing — template it from there.)
     - [ ] Add compile-the-output CI (`go build ./...` on generated golden repos), including one repo with a representative `internal/custom/` file so contract drift fails in biscuit's CI.
@@ -81,7 +81,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
 - [ ] **E9: Update pipeline** — spec changes open reviewable PRs on the CLI repo automatically. → [Update pipeline](PRD.md#update-pipeline)
     - [ ] Ship the pull-topology workflow with `.biscuit-state.yml` and App-token PRs.
     - [ ] Classify spec diffs into semver bumps feeding release-please.
-    - [ ] Ship `biscuit update`: the same fetch→regenerate loop run locally against the configured spec source.
+    - [ ] Make `biscuit generate` fetch a remote `spec.source` before regenerating — the CI loop run locally, no separate update verb (`fern generate`/`speakeasy run` precedent); the templated workflow invokes the same command.
     - [ ] Ship the biscuit-upgrade PR flow so tool bumps arrive as a separate PR species from spec updates.
     - [ ] Document the push topology (`repository_dispatch`) as a snippet.
 - [ ] **E10: npm distribution for generated CLIs** — generated CLIs install via `npm`/`npx`. → [Distribution](PRD.md#distribution)

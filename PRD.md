@@ -77,7 +77,7 @@ cron (~6h) + workflow_dispatch
   → git diff → open PR (spec SHA/version in title + body)
 ```
 
-`.biscuit-state.yml` (committed) records spec hash + provenance ("generated from spec @ abc123") — same role as Stainless's `.stats.yml` in openai-cli. `biscuit update` runs the same fetch → regenerate loop locally against the configured source.
+`.biscuit-state.yml` (committed) records spec hash + provenance ("generated from spec @ abc123") — same role as Stainless's `.stats.yml` in openai-cli. Locally the same loop is just `biscuit generate`: with a remote `spec.source` configured it fetches before regenerating — no separate regeneration verb, matching the field (`fern generate`, `speakeasy run` with the source in workflow config, `stl builds`; nobody ships an update-from-source command). `update` is instead an alias of `upgrade`, the tool self-bump ([Distribution](#distribution)).
 
 **Push topology (v2)** — for users owning both repos: spec repo fires `repository_dispatch` at the CLI repo on merge; same downstream job, instant instead of polled. Ship as a documented snippet, not core machinery.
 
@@ -102,9 +102,9 @@ Every place biscuit manifests, and what's on each:
 
 |Surface|Primary user|What's on it|
 |---|---|---|
-|**biscuit CLI**|dev generating a CLI|`generate`, `doctor`, `bench`, `init`, `update`, `upgrade`, `adopt` (E11); reads `biscuit.yaml`|
+|**biscuit CLI**|dev generating a CLI|`generate`, `doctor`, `bench`, `init`, `upgrade` (alias `update`), `adopt` (E11); reads `biscuit.yaml`|
 |**biscuit library**|tooling authors, future hosted API|`biscuit.Generate(ctx, spec, cfg) → FilePlan`, `plan.Write(dir)` — pure, no side effects|
-|**Generated CLI**|end users of the target API|resource/verb command tree, `--format`/`--transform`, `@file`, pagination, SSE, auth, completions, man pages, `upgrade`|
+|**Generated CLI**|end users of the target API|resource/verb command tree, `--format`/`--transform`, `@file`, pagination, SSE, auth, completions, man pages, `upgrade` (alias `update`)|
 |**Generated MCP server**|agents / MCP clients|`{binary} mcp serve` — one tool per operation, stdio + Streamable HTTP|
 |**Chat TUI**|humans, interactively|one Bubble Tea interface, three entry points: `mcp chat`, `{binary} chat`, interactive-TTY SSE|
 |**GitHub Action**|CI|update pipeline: fetch spec → regenerate → PR with `.biscuit-state.yml` provenance|
@@ -307,7 +307,7 @@ Of generated CLIs — all of this is templated into the output repo.
 - **GoReleaser** on release-please PR merge: macOS (arm64/amd64), Linux (arm64/amd64/386), Windows (arm64/amd64), published to GitHub Releases.
 - **Homebrew** tap, formula auto-updated. Tap token + macOS signing/notarization secrets in a `main`-scoped GitHub environment (Stainless's documented hardening). Homebrew 6 requires third-party taps to be trusted before first install (`brew tap --trust`, or a fully-qualified `brew install org/tap/name` which bypasses the prompt) — the generated README documents the trust step, and the friction is what makes the homebrew/core submission (E12) worth pursuing.
 - **npm**: per-platform `optionalDependencies` pattern (esbuild/Biome/Turborepo), _not_ postinstall downloads — works with `--ignore-scripts`, proxies, lockfiles. Main package's `bin` is a ~20-line shim resolving `@scope/cli-${platform}-${arch}` with `require.resolve` fallback error (pnpm/Yarn PnP quirk). Publish order: platform packages → main. npm trusted publishing via OIDC: a brand-new package can't OIDC on its first publish (bootstrap locally), trusted-publisher configs must explicitly allow publishing, and `npm trust` configures multiple packages in one command (npm ≥ 11.5.1, Node ≥ 22.14).
-- **Upgrade**: every generated CLI — and biscuit itself, where the mechanics are proven first — ships a channel-aware `{binary} upgrade`. Channel-aware in both senses: the *install* channel (Homebrew cellar path, npm global shim, bare binary) decides the mechanism — exec the package manager's own upgrade; self-download-and-swap only for bare binaries, so brew/npm always own the files they installed — and the *release* channel decides the target: a prerelease install upgrades within its npm dist-tag / `@alpha` cask, a stable install never crosses onto prereleases. The verbs stay distinct: `update` refetches the spec and regenerates ([Update pipeline](#update-pipeline)); `upgrade` bumps the tool itself.
+- **Upgrade**: every generated CLI — and biscuit itself, where the mechanics are proven first — ships a channel-aware `{binary} upgrade`. Channel-aware in both senses: the *install* channel (Homebrew cellar path, npm global shim, bare binary) decides the mechanism — exec the package manager's own upgrade; self-download-and-swap only for bare binaries, so brew/npm always own the files they installed — and the *release* channel decides the target: a prerelease install upgrades within its npm dist-tag / `@alpha` cask (alpha.3 → alpha.4), a stable install never crosses onto prereleases. Graduation is the one asymmetry: when a stable release is semver-newer than the newest alpha, an alpha install upgrades to it and switches channels (cask swap / dist-tag change, announced) — alpha means early builds, not a permanent side-channel. Crossing the other way is explicit-only: `--channel stable|alpha` switches the tracked channel package-manager-natively, and `--version vX.Y.Z[-alpha.N]` pins an exact release (rollback included) by fetching that GitHub-release binary and self-swapping — which takes ownership from brew/npm, so it confirms before doing it (`deno upgrade --version` / `flutter channel` precedent). `update` is an alias of `upgrade` — the wild treats them as synonyms (rustup says update, deno and flutter say upgrade) and guessing wrong shouldn't regenerate anything. Spec regeneration has no verb of its own: it's `biscuit generate`, which fetches a remote `spec.source` first ([Update pipeline](#update-pipeline)).
 - Opt-in via config:
 
 ```yaml
