@@ -8,16 +8,10 @@ import (
 	"github.com/oxmonty/biscuit/internal/version"
 )
 
-// quickstart renders under Short in `biscuit help`/`--help`/`-h`, and cobra
-// shows the same text on bare invocation (no Run set → cmd.Help() by default).
-var quickstart = fmt.Sprintf("\n\n%-16s # a dir with an OpenAPI spec\n%-16s # grade the spec\n\nFor more information visit https://github.com/oxmonty/biscuit",
-	"cd <project>", "biscuit doctor")
-
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "biscuit",
 		Short:   "Generate a production-ready CLI repository from an OpenAPI 3.x spec",
-		Long:    "Generate a production-ready CLI repository from an OpenAPI 3.x spec" + quickstart,
 		Version: version.Version,
 	}
 	// bare version for --version (script/agent-friendly); `biscuit version` has the detail
