@@ -5,6 +5,7 @@
 
 ## Help:
 help: ## Show this help message
+	@printf "\n\033[1mbiscuit\033[0m — Generate a production-ready CLI repository from an OpenAPI 3.x spec\n"
 	@printf "\n\033[1mUsage:\033[0m make \033[36m<target>\033[0m\n"
 	@awk 'BEGIN {FS = ":.*##"; section=""} \
 		/^## [A-Za-z]/ { section=substr($$0, 4); next } \

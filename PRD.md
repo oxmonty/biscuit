@@ -293,6 +293,7 @@ foo-cli/
 ├── .github/workflows/  # release-please + goreleaser + npm publish
 ├── .goreleaser.yml
 ├── .biscuit-state.yml  # spec provenance
+├── Makefile            # sectioned help headed by name/description from the spec's info
 └── README.md           # generated
 ```
 
