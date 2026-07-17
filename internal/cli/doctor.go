@@ -27,7 +27,11 @@ func newDoctorCommand() *cobra.Command {
 		Short: "Grade a spec and report what its gaps do to the generated CLI",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			doc, err := spec.Load(specPath)
+			path, err := resolveSpecPath(cmd, specPath)
+			if err != nil {
+				return err
+			}
+			doc, err := spec.Load(path)
 			if err != nil {
 				return err // InvalidError formats the blocking report itself
 			}
@@ -50,8 +54,7 @@ func newDoctorCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&specPath, "spec", "", "path to the OpenAPI spec")
-	_ = cmd.MarkFlagRequired("spec") // discovery makes this optional in the next story
+	cmd.Flags().StringVar(&specPath, "spec", "", "path to the OpenAPI spec (default: discover it)")
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail on any advisory finding (exit 5)")
 	return cmd
 }
