@@ -54,8 +54,8 @@ func printWelcome(cmd *cobra.Command) {
 	out := cmd.OutOrStdout()
 	_, _ = fmt.Fprintf(out, "\n%s%s%s\n\n", accent, logo, reset)
 	_, _ = fmt.Fprintf(out, "%s%s%s\n\n", muted, cmd.Short, reset)
-	_, _ = fmt.Fprintf(out, "cd <project>              %s# a dir with an OpenAPI spec%s\n", muted, reset)
-	_, _ = fmt.Fprintf(out, "biscuit doctor             %s# grade the spec%s\n\n", muted, reset)
+	_, _ = fmt.Fprintf(out, "%-20s %s# a dir with an OpenAPI spec%s\n", "cd <project>", muted, reset)
+	_, _ = fmt.Fprintf(out, "%-20s %s# grade the spec%s\n\n", "biscuit doctor", muted, reset)
 	_, _ = fmt.Fprintf(out, "%sFor more information visit %shttps://github.com/oxmonty/biscuit\n\n", muted, reset)
 }
 
