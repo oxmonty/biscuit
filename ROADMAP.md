@@ -39,6 +39,7 @@ Usable two ways:
     - [ ] Load and apply `biscuit.yaml` overrides (names, aliases, hidden endpoints, pagination hints), validated against a schema: unknown keys rejected with precise errors, `version` key for forward migration.
     - [ ] Ship `biscuit init`: scaffold a starter `biscuit.yaml` seeded from `doctor`'s gap analysis.
     - [ ] Ship `biscuit generate --dry-run` printing the derived resource/verb tree and the FilePlan — free from the plan/write split, and E3's demo.
+    - [ ] Polish doctor output: humane one-line resolver diagnostics (no raw rolodex dumps), finding counts folded into the impact phrasing ("718 sites weaken the mock corpus"), severity colors on TTY, and `doctor --format json` for CI pipelines.
 - [ ] **E4: Repo scaffolding** — `biscuit generate` emits a complete repo that builds and releases. → [Generated repo structure](PRD.md#generated-repo-structure), [Distribution](PRD.md#distribution), [Regeneration safety](PRD.md#regeneration-safety)
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`, defining the stable surface custom code may depend on.
     - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@next` cask mirroring the npm `next` dist-tag — one prerelease channel for any maturity (alpha/beta/rc live in the version string) — and the release job's dedicated cross-compile build cache (proven on biscuit; see [CI/CD](PRD.md#cicd)).
