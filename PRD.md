@@ -154,7 +154,9 @@ The parity tiers above are *relative* — scored against Stainless output. The R
 5. **Footprint** — cold-start latency to `--help` and installed binary size; native Go vs runtime-dependent output shows up here.
 6. **Generation cost** — wall-clock spec → buildable repo, and build success rate across the test ladder.
 
-Both generators are account-gated, so the comparison begins with a spike recording what each can actually produce per ladder spec (capability gaps are themselves findings — charted as zero, footnoted honestly). Scores are dated and SHA-paired like the parity number.
+Reference targets: Fern publishes its own CLI generator output at [fern-api/petstore-cli](https://github.com/fern-api/petstore-cli) (Rust — irrelevant to tiers 1–2, which are black-box by design) on the same petstore spec as our easy rung. Speakeasy ships no CLI generator ([their examples](https://github.com/speakeasy-api/examples) cover SDKs, Terraform providers, tests, and MCP servers) — charted as zero and footnoted; the honest Speakeasy comparison is MCP-server output vs ours once E7 exists. Account-gated generation of further comparison repos (e.g. Fern on train-travel) is a spike task. Scores are dated and SHA-paired like the parity number.
+
+**Live-API smoke tier (optional):** generate a CLI from a real provider's spec (openai.yaml), run a **read-only** corpus (GET-only allowlist, never mutating calls against a live account) with the token from an env var, against the same commands on the vendor CLI. Compares status codes and response shape, not bytes — live responses aren't deterministic. Credibility evidence ("both made identical real calls"), never a CI gate; the mock stays primary.
 
 ---
 
