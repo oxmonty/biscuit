@@ -24,8 +24,8 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
-func TestBareInvocationNonTTYFallsThroughToHelp(t *testing.T) {
-	// given: the root command with a non-TTY output (a bytes.Buffer, not *os.File)
+func TestBareInvocationShowsHelp(t *testing.T) {
+	// given: the root command with no subcommand
 	root := NewRootCommand()
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -36,11 +36,32 @@ func TestBareInvocationNonTTYFallsThroughToHelp(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	// then: it's cobra's normal help, not the welcome splash
-	if strings.Contains(out.String(), logo) {
-		t.Error("non-TTY invocation printed the splash logo")
-	}
+	// then: cobra's default help fires, including the quickstart
 	if !strings.Contains(out.String(), "Usage:") {
 		t.Errorf("expected cobra help output, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "biscuit doctor") {
+		t.Error("bare invocation help is missing the quickstart")
+	}
+}
+
+func TestHelpCommandShowsQuickstart(t *testing.T) {
+	// given: the root command
+	root := NewRootCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"help"})
+
+	// when: running `biscuit help`
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	// then: the quickstart appears alongside the usual command listing
+	if !strings.Contains(out.String(), "cd <project>") {
+		t.Error("biscuit help is missing the quickstart")
+	}
+	if !strings.Contains(out.String(), "Available Commands:") {
+		t.Error("biscuit help lost cobra's command listing")
 	}
 }
