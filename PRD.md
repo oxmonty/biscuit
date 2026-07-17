@@ -19,7 +19,7 @@ openapi.yaml + biscuit.yaml
 
 `--spec` is optional: run `generate`/`doctor` from a project dir and biscuit finds the spec.
 
-Discovery order: well-known names first (`openapi|swagger.{yaml,yml,json}`), then content-sniff remaining yaml/json files (first ~1 KB) for an `openapi:` root key. In a git repo, enumerate via `git ls-files --cached --others --exclude-standard` — the index beats walking, and gitignore acts as a first-pass filter, not a hard exclusion; when git finds nothing (or outside a repo), fall back to `filepath.WalkDir` pruning `.git`/`node_modules`/`vendor`-style dirs. The fallback deliberately ignores .gitignore, so pipeline-generated gitignored specs are still found.
+Discovery order: well-known names first (`openapi|swagger.{yaml,yml,json}`), then content-sniff remaining yaml/json files (first ~1 KB) for an `openapi:` root key. In a git repo, enumerate via `git ls-files --cached --others --exclude-standard` — the index beats walking, and gitignore acts as a first-pass filter, not a hard exclusion; when git finds nothing (or outside a repo), fall back to `filepath.WalkDir` pruning `.git`/`node_modules`/`vendor`-style dirs. The fallback deliberately ignores .gitignore, so pipeline-generated gitignored specs are still found. The MVP cut (E2) enumerates the current directory only — one flat `ReadDir`, no recursion; the git-index and `WalkDir` machinery arrives with E8's discovery UX.
 
 UX: a spinner on stderr once discovery exceeds ~150 ms (TTY only — the fast case stays flicker-free, pipes stay clean). On multiple matches, an interactive TTY gets a selector — plain numbered stderr prompt in the MVP cut, upgraded to a Bubble Tea countdown selector alongside the chat TUI — that defaults to the best-ranked candidate (conventional name at shallowest depth); non-TTY picks that default outright and prints what it chose.
 
@@ -261,7 +261,7 @@ biscuit/
 └── .github/workflows/
 ```
 
-Principles: IR between spec and templates (never render straight from spec); CLI is the first consumer of the public library API; template tree mirrors output tree; **CI compiles the generated output** (`go build ./...`) — the single most valuable check. Biscuit's own failures are contractual: defined exit codes and failure surfaces for unresolvable external `$ref`s, malformed or oversized specs, and render errors, so scripts and the update pipeline branch on them predictably.
+Principles: IR between spec and templates (never render straight from spec); CLI is the first consumer of the public library API; template tree mirrors output tree; **CI compiles the generated output** (`go build ./...`) — the single most valuable check. Biscuit's own failures are contractual, so scripts and the update pipeline branch on them predictably. Exit codes: `0` success · `1` internal error · `2` usage error · `3` no spec found · `4` spec invalid (blocking correctness: schema validation, unresolvable `$ref`s, duplicate operationIds) · `5` quality gate failed (`--strict` / `lint.min_grade`).
 
 ### Generation pipeline and concurrency model
 
@@ -419,7 +419,7 @@ Live questions, plus settled ones with their answers — this is the project's d
 
 - Dot-notation depth policy: fixed cap vs schema-size-adaptive expansion (bench-measurable).
 - Pagination mode: transparent walking vs explicit `--all`/`--max-pages` (Speakeasy's safer default) — decide before E5.
-- Parser: `pb33f/libopenapi` vs `speakeasy-api/openapi` (spike both on openai.yaml in E2; each brings its linter sibling — vacuum vs Speakeasy's 60+-rule linter — so the choice is parser+doctor as a pair, and both pairs are single-vendor: weigh governance and bus-factor, not just parse quality).
+- **Resolved (2026-07):** parser+doctor pair — `pb33f/libopenapi` + vacuum, over `speakeasy-api/openapi` + its linter. E2 spike (kept in `spike/` for the epic write-up): on openai.yaml (2.8 MB) libopenapi parses+resolves in 99 ms / 41 MB heap vs speakeasy's 730 ms / 160 MB; both are cycle-safe on pathological `$ref`s. Speakeasy's built-in validation is stronger (caught duplicate operationIds and eight real 3.1 type bugs in openai.yaml) and `Upgrade()` normalizes 3.0→3.1 for free — but vacuum covers the validation layer with Spectral-compatible rulesets plus the report scoring that `lint.min_grade` assumes, and Speakeasy is a direct competitor: building biscuit's foundation on their library is a strategic dependency risk. Mitigations owed by `internal/spec`: always set `BasePath`, route libopenapi's slog noise into our diagnostics, treat `$ref` failures inside vendor extensions as advisory (libopenapi chases them; they're opaque per spec), and count webhook operations explicitly (path ops and webhooks are separate collections).
 - Config overrides: `biscuit.yaml` vs `x-biscuit-*` extensions vs standard OpenAPI Overlays (decide before E3's config-loading story).
 - Doctor default advisory set: which vacuum rules map to generation impact vs noise (tune on the test-ladder specs).
 - **Resolved (2026-07):** registry names for biscuit itself — ship as `biscuit-cli` on npm and the Homebrew tap, with `bin`/cask `binaries` keeping the command `biscuit`. Evidence: bare `biscuit` is npm-squatted and a browser cask in homebrew/cask; `v0.1.0-alpha.3` published under these names. Dispute/core-submission revisited in E12.
