@@ -55,3 +55,19 @@ The front half of the generation pipeline: any OpenAPI 3.x spec loads into a det
 ## What this proved
 
 `spec → IR` is deterministic end to end (double-map equality on the hardest spec), the doctor speaks in generation impact rather than lint noise, and failures are contractual enough to script against. E3's mapping heuristics now have a sorted, normalized, cycle-finite structure to build the command tree on — and a benchmark watching the pipeline as render joins it.
+
+---
+
+## Addendum — release day (2026-07-17, afternoon)
+
+Appended after `v0.1.0-alpha.4` shipped; the sections above were written pre-release.
+
+- **Released and verified end to end**: 8 assets on the GitHub Release; `biscuit-cli@next` cask installs and runs `doctor`; npm `next` dist-tag resolves via both `npm i -g` and cold `npx`; the shim pulled exactly one platform package. Stale `alpha` dist-tags removed manually.
+- **CI failed post-merge on errcheck** (golangci-lint defaults; the repo has no config). Nine unchecked writer returns fixed with the `_, _ =` idiom; running CI's exact linter binary locally caught three sites CI's own log had truncated.
+- **Release took ~30 min** — vacuum drags in `modernc.org/sqlite`, cross-compiled 7× on a cold cache every release because the ci and release workflows collide on the same setup-go cache key. Fixed with a dedicated `release-go-` cache + `restore-keys`; templated into E4's scope for generated repos. goreleaser Pro's `--split` deliberately not adopted (paid).
+- **`update` became an alias of `upgrade`** (synonyms in the wild); spec regeneration keeps no verb — `biscuit generate` fetches a remote `spec.source` (fern/speakeasy precedent). Channel-aware `upgrade` with `--channel`/`--version` scoped into E4.
+- **Prerelease channels folded to one**: `biscuit-cli@next` cask + npm `next` dist-tag replace `@alpha`/`alpha`; alpha/beta/rc live in the version string (npm `next` convention; VS Code stable+insiders; Flutter removed its dev channel). The publish script had been deriving the dist-tag from the semver identifier — a future `-beta.1` would have silently minted a `beta` channel; found and fixed during the fold.
+- **linux/386 kept** after a staffed keep/drop debate: gh, goreleaser, and openai-cli (the parity target) all ship it; pure-Go so no cgo risk; seconds under the new cache. Revisit trigger: openai-cli dropping it.
+- **Doctor output**: blank vacuum severities now label `info`, findings rank errors-first, and a summary footer explains the advisory-only policy (`112 errors … generation not blocked`). Deeper polish (humane resolver diagnostics, counts in impact lines, TTY colors, `--format json`) scoped as an E3 story.
+- **Ladder grew**: museum (MIT, 3.1), galaxy (MIT, 3.1.1 — multi-auth/file-upload/webhooks and a real `Planet → Satellite` cycle), pokeapi (BSD-3, 98 GET-only ops — E3's mapping-scale rung and the doctor→init override-rescue demo). Callbacks remain uncovered anywhere; a hand-written pathological case is the cheap fix when needed.
+- **Install-surface lesson**: npm has no caveats channel and postinstall echoes are banned by our own `--ignore-scripts` design — so install guidance must never live only in brew caveats; the binary and README are the surfaces every channel shares. Cask caveats collapse to `biscuit upgrade` pointers once E4 ships it.
