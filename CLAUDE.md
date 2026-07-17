@@ -10,6 +10,7 @@ A Go package and CLI that converts an OpenAPI 3.x spec into a complete, producti
 go build ./...              # build everything
 go test ./...               # run tests
 go run ./cmd/biscuit        # run the CLI locally
+make help                   # all targets: check (build+vet+test), lint, bench, snapshot, ...
 ```
 
 ## Layout
