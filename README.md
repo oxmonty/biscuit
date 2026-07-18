@@ -1,6 +1,6 @@
 # biscuit
 
-<a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img alt="Total downloads across all releases" src="https://img.shields.io/github/downloads/oxmonty/biscuit/total?label=downloads&color=2f6f4f"></a>
+<a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img alt="Total downloads across all releases" src="https://img.shields.io/github/downloads/oxmonty/biscuit/total?label=downloads"></a>
 <a href="https://github.com/oxmonty/biscuit/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/oxmonty/biscuit?include_prereleases&label=release&color=1c1c1a"></a>
 
 Convert an OpenAPI 3.x spec into a complete, production-ready CLI repository. An open, self-hostable alternative to the Stainless CLI generator.
