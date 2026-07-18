@@ -1,5 +1,10 @@
 # biscuit
 
+[![release](https://img.shields.io/github/v/release/oxmonty/biscuit?include_prereleases&sort=semver)](https://github.com/oxmonty/biscuit/releases)
+[![downloads](https://img.shields.io/github/downloads/oxmonty/biscuit/total?label=binary%20downloads)](https://github.com/oxmonty/biscuit/releases)
+[![npm](https://img.shields.io/npm/dm/biscuit-cli?label=npm%20downloads)](https://www.npmjs.com/package/biscuit-cli)
+[![ci](https://github.com/oxmonty/biscuit/actions/workflows/ci.yml/badge.svg)](https://github.com/oxmonty/biscuit/actions/workflows/ci.yml)
+
 Convert an OpenAPI 3.x spec into a complete, production-ready CLI repository. An open, self-hostable alternative to the Stainless CLI generator.
 
 ```sh

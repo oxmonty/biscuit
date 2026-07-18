@@ -68,7 +68,7 @@ Usable two ways:
     - [ ] Ship `biscuit bench --against <repo>` emitting the parity report: per-tier scores with the `--min-parity` CI ratchet and `expected: ours|theirs|either` corpus annotations; publish the dated, spec/CLI-SHA-paired scores as a per-tier bar chart in biscuit's README (SVG rendered by the bench harness itself, no Python dependency).
     - [ ] Stand up the cross-generator benchmark against [fern-api/petstore-cli](https://github.com/fern-api/petstore-cli) (Fern's published CLI generator output, same petstore spec as our easy rung); Speakeasy ships no CLI generator — charted as zero, footnoted, MCP comparison deferred to E7. Score all output against the same spec-generated mock on the six absolute metrics, plus the optional read-only live-API smoke tier. → [Bench metrics](PRD.md#bench-metrics-cross-generator)
     - [ ] Write biscuit's README quickstart and commit `examples/` (petstore-cli plus one real-world spec) as browsable generated output, leading with the biscuit-vs-Fern-vs-Speakeasy six-metric bar chart above the Stainless parity chart.
-    - [ ] Add the passive download metrics: a scheduled workflow aggregating GitHub release-asset counts and the npm downloads API into a committed JSON + README badge — registry-side only, the binary never phones home. → [Additional design considerations](PRD.md#additional-design-considerations)
+    - [x] Add the passive download metrics: shields.io badges on the README querying GitHub release-asset counts and the npm downloads API on demand — registry-side only, zero infrastructure, the binary never phones home. (A committed-JSON history workflow only if trend archaeology is ever wanted.) → [Additional design considerations](PRD.md#additional-design-considerations)
 
 ---
 
