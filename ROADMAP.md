@@ -33,14 +33,14 @@ Usable two ways:
     - [x] Seed `testdata/specs` as a graded ladder: petstore (easy), a mid-size real-world 3.1 spec with oneOf/multi-auth/SSE (medium, e.g. Train Travel API), openai.yaml (hard), plus pathological cases including cyclic `$ref`s.
     - [x] Add the generation benchmark (`gen_bench_test.go`) from day one.
 - [ ] **E3: Mapping and config** — a released `biscuit generate --dry-run` prints the derived command surface for any spec, overridable via `biscuit.yaml`. → [Command grammar](PRD.md#command-grammar), [Argument parsing](PRD.md#argument-parsing)
-    - [ ] Derive the resource/verb tree from tags and paths, including nested sub-resources and stutter removal.
-    - [ ] Add [stripe/openapi](https://github.com/stripe/openapi) to `testdata/specs` as the tree-derivation stress test: a large real-world 3.x spec with deeply nested resources and polymorphic `oneOf` on nearly every object, a distinct shape from openai.yaml.
-    - [ ] Implement flag flattening with the schema-adaptive dot-notation depth policy, cycle detection, and a hard depth bound.
-    - [ ] Implement the oneOf discriminator-inference cascade.
-    - [ ] Load and apply `biscuit.yaml` overrides (names, aliases, hidden endpoints, pagination hints), validated against a schema: unknown keys rejected with precise errors, `version` key for forward migration — plus the in-spec `x-biscuit-*` mirror set (name, group, ignore, pagination hints) feeding the same override struct, sidecar winning on conflict.
-    - [ ] Ship `biscuit init`: scaffold a starter `biscuit.yaml` seeded from `doctor`'s gap analysis.
-    - [ ] Ship `biscuit generate --dry-run` printing the derived resource/verb tree and the FilePlan — free from the plan/write split, and E3's demo.
-    - [ ] Polish doctor output: humane one-line resolver diagnostics (no raw rolodex dumps), finding counts folded into the impact phrasing ("718 sites weaken the mock corpus"), severity colors on TTY, and `doctor --format json` for CI pipelines.
+    - [x] Derive the resource/verb tree from tags and paths, including nested sub-resources and stutter removal.
+    - [x] Add [stripe/openapi](https://github.com/stripe/openapi) to `testdata/specs` as the tree-derivation stress test: a large real-world 3.x spec with deeply nested resources and polymorphic `oneOf` on nearly every object, a distinct shape from openai.yaml.
+    - [x] Implement flag flattening with the schema-adaptive dot-notation depth policy, cycle detection, and a hard depth bound.
+    - [x] Implement the oneOf discriminator-inference cascade.
+    - [x] Load and apply `biscuit.yaml` overrides (names, aliases, hidden endpoints, pagination hints), validated against a schema: unknown keys rejected with precise errors, `version` key for forward migration — plus the in-spec `x-biscuit-*` mirror set (name, group, ignore, pagination hints) feeding the same override struct, sidecar winning on conflict.
+    - [x] Ship `biscuit init`: scaffold a starter `biscuit.yaml` seeded from `doctor`'s gap analysis.
+    - [x] Ship `biscuit generate --dry-run` printing the derived resource/verb tree and the FilePlan — free from the plan/write split, and E3's demo.
+    - [x] Polish doctor output: humane one-line resolver diagnostics (no raw rolodex dumps), finding counts folded into the impact phrasing ("718 sites weaken the mock corpus"), severity colors on TTY, and `doctor --format json` for CI pipelines.
 - [ ] **E4: Repo scaffolding** — `biscuit generate` emits a complete repo that builds and releases. → [Generated repo structure](PRD.md#generated-repo-structure), [Distribution](PRD.md#distribution), [Regeneration safety](PRD.md#regeneration-safety)
     - [ ] Render the full template tree with generated-file markers and `internal/custom/`, defining the stable surface custom code may depend on.
     - [ ] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@next` cask mirroring the npm `next` dist-tag — one prerelease channel for any maturity (alpha/beta/rc live in the version string) — and the release job's dedicated cross-compile build cache (proven on biscuit; see [CI/CD](PRD.md#cicd)).
