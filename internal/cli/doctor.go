@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"go.yaml.in/yaml/v4"
 
+	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/lint"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
@@ -35,7 +35,12 @@ func newDoctorCommand() *cobra.Command {
 				return &usageError{fmt.Errorf("--format must be text or json, got %q", format)}
 			}
 
-			path, err := resolveSpecPath(cmd, specPath)
+			cfg, err := config.Load(".")
+			if err != nil {
+				return &usageError{err} // a malformed config must fail loudly
+			}
+
+			path, err := resolveSpecPath(cmd, specPath, cfg)
 			if err != nil {
 				return err
 			}
@@ -46,7 +51,7 @@ func newDoctorCommand() *cobra.Command {
 
 			report := lint.Run(doc)
 			groups := groupFindings(report.Findings)
-			minGrade := loadMinGrade()
+			minGrade := cfg.Lint.MinGrade
 			blocking := (strict && len(report.Findings) > 0) || (minGrade > 0 && report.Grade < minGrade)
 
 			if format == "json" {
@@ -253,23 +258,4 @@ func relPath(p string) string {
 		}
 	}
 	return filepath.Base(p)
-}
-
-// loadMinGrade reads lint.min_grade from ./biscuit.yaml if present.
-// ponytail: E3 replaces this with the schema-validated config loader;
-// until then only this one key is read, and silently.
-func loadMinGrade() int {
-	data, err := os.ReadFile("biscuit.yaml")
-	if err != nil {
-		return 0
-	}
-	var cfg struct {
-		Lint struct {
-			MinGrade int `yaml:"min_grade"`
-		} `yaml:"lint"`
-	}
-	if yaml.Unmarshal(data, &cfg) != nil {
-		return 0
-	}
-	return cfg.Lint.MinGrade
 }

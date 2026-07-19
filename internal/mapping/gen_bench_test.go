@@ -17,7 +17,7 @@ func benchmarkMap(b *testing.B, path string) {
 		if err != nil {
 			b.Fatalf("Load(%s): %v", path, err)
 		}
-		mapSink = Map(doc)
+		mapSink = Map(doc, nil)
 	}
 }
 

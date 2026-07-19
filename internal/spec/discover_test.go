@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/oxmonty/biscuit/internal/config"
 )
 
 func write(t *testing.T, dir, name, body string) {
@@ -69,9 +71,10 @@ func TestCachedSpecPathRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// then: the cache returns it, so discovery runs once
-	if got := CachedSpecPath(dir); got != "openapi.yaml" {
-		t.Errorf("CachedSpecPath = %q, want openapi.yaml", got)
+	// then: the config loader returns it, so discovery runs once
+	cfg, err := config.Load(dir)
+	if err != nil || cfg.Spec.Path != "openapi.yaml" {
+		t.Errorf("config = %+v, err = %v, want spec.path openapi.yaml", cfg, err)
 	}
 }
 
@@ -89,7 +92,8 @@ func TestPersistAppendsWithoutClobbering(t *testing.T) {
 	if !strings.Contains(string(data), "min_grade: 85") {
 		t.Error("existing config was clobbered")
 	}
-	if got := CachedSpecPath(dir); got != "openapi.yaml" {
-		t.Errorf("CachedSpecPath = %q after append", got)
+	cfg, err := config.Load(dir)
+	if err != nil || cfg.Spec.Path != "openapi.yaml" || cfg.Lint.MinGrade != 85 {
+		t.Errorf("config = %+v, err = %v after append", cfg, err)
 	}
 }

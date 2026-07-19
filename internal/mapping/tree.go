@@ -14,10 +14,26 @@ import (
 // path has no static segments. Verbs come from operationIds with resource/tag
 // stutter stripped (Speakeasy's disclosed heuristic), falling back to
 // method+shape names when the id is missing or reduces to a bare HTTP verb.
-func deriveCommands(api *ir.API) {
+func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
+	effective := make([]ir.Override, len(api.Operations))
+	matched := make(map[string]bool, len(overrides))
+	for i := range api.Operations {
+		effective[i] = effectiveOverride(&api.Operations[i], overrides, matched)
+	}
+	for key := range overrides {
+		if !matched[key] {
+			api.Diagnostics = append(api.Diagnostics, fmt.Sprintf(
+				"biscuit.yaml overrides: no operation matches key %q", key))
+		}
+	}
+	sort.Strings(api.Diagnostics)
+
 	extended := make(map[string]bool) // normalized path prefixes that longer paths extend
 	postOnly := make(map[string]bool) // normalized full paths whose every operation is POST
-	for _, op := range api.Operations {
+	for i, op := range api.Operations {
+		if effective[i].Ignore {
+			continue // ignored operations must not shape action detection either
+		}
 		segs := pathSegments(op.Path)
 		for i := 1; i < len(segs); i++ {
 			extended[normJoin(segs[:i])] = true
@@ -39,7 +55,17 @@ func deriveCommands(api *ir.API) {
 	root := newNode("")
 	for i := range api.Operations {
 		op := &api.Operations[i]
+		ov := effective[i]
+		if ov.Ignore {
+			continue
+		}
 		chain, verb := commandFor(op, extended, postOnly)
+		if ov.Group != "" {
+			chain = kebabFields(ov.Group)
+		}
+		if ov.Name != "" {
+			verb = kebab(ov.Name)
+		}
 		n := root
 		for _, name := range chain {
 			n = n.child(name)
@@ -57,15 +83,20 @@ func deriveCommands(api *ir.API) {
 				"command %q: %s %s and %s %s both map to verb %q; renamed the latter to %q — set an override in biscuit.yaml to choose better names",
 				strings.Join(chain, " "), prev.Method, prev.Path, op.Method, op.Path, verb, name))
 		}
-		n.verbs[name] = &ir.Verb{
+		v := &ir.Verb{
 			Name:        name,
 			Method:      op.Method,
 			Path:        op.Path,
 			OperationID: op.ID,
 			Summary:     op.Summary,
 			Deprecated:  op.Deprecated,
+			Pagination:  ov.Pagination,
 			Flags:       flagsFor(op, schemaIdx),
 		}
+		for _, a := range ov.Aliases {
+			v.Aliases = append(v.Aliases, kebab(a))
+		}
+		n.verbs[name] = v
 	}
 
 	tagDesc := make(map[string]string, len(api.Tags))
@@ -74,6 +105,42 @@ func deriveCommands(api *ir.API) {
 	}
 	api.Commands = root.freeze(tagDesc)
 	api.RootVerbs = frozenVerbs(root.verbs)
+}
+
+// effectiveOverride merges the sidecar entry for an operation — keyed by
+// operationId, or "METHOD /path" when the spec has none — over its in-spec
+// x-biscuit-* values. Sidecar wins field-wise; non-zero wins.
+func effectiveOverride(op *ir.Operation, overrides map[string]ir.Override, matched map[string]bool) ir.Override {
+	ov := op.XBiscuit
+	for _, key := range []string{op.ID, op.Method + " " + op.Path} {
+		side, ok := overrides[key]
+		if key == "" || !ok {
+			continue
+		}
+		matched[key] = true
+		if side.Name != "" {
+			ov.Name = side.Name
+		}
+		if side.Group != "" {
+			ov.Group = side.Group
+		}
+		if side.Ignore {
+			ov.Ignore = true
+		}
+		if side.Pagination != "" {
+			ov.Pagination = side.Pagination
+		}
+		ov.Aliases = append(ov.Aliases, side.Aliases...)
+	}
+	return ov
+}
+
+func kebabFields(group string) []string {
+	var chain []string
+	for _, f := range strings.Fields(group) {
+		chain = append(chain, kebab(f))
+	}
+	return chain
 }
 
 // commandFor derives (resource chain, verb) for one operation.

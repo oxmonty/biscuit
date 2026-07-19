@@ -39,7 +39,9 @@ type Verb struct {
 	OperationID string // empty when the name was path-derived
 	Summary     string
 	Deprecated  bool
-	Flags       []Flag // sorted by Name
+	Aliases     []string // kebab-case, from overrides
+	Pagination  string   // pagination hint, from overrides
+	Flags       []Flag   // sorted by Name
 }
 
 // Flag is one statically defined flag on a verb. Static definition is the
@@ -93,6 +95,18 @@ type Operation struct {
 	Params      []Param // sorted by (In, Name)
 	RequestBody []MediaType
 	Responses   []Response
+	XBiscuit    Override // x-biscuit-* extension values carried in-spec
+}
+
+// Override adjusts how one operation maps into the command tree. It rides
+// in-spec as x-biscuit-* extensions or in biscuit.yaml, sidecar winning
+// field-wise (non-zero wins — a sidecar zero can't unset an extension value).
+type Override struct {
+	Name       string   // verb name
+	Group      string   // whitespace-separated resource chain
+	Ignore     bool     // drop the operation from the CLI
+	Aliases    []string // extra verb names (sidecar only)
+	Pagination string   // hint for the execution layer
 }
 
 type Param struct {

@@ -18,7 +18,7 @@ func mustMap(t *testing.T, path string) *ir.API {
 	if err != nil {
 		t.Fatalf("Load(%s): %v", path, err)
 	}
-	return Map(doc)
+	return Map(doc, nil)
 }
 
 func TestMapPetstore(t *testing.T) {

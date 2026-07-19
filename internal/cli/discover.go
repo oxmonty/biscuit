@@ -6,18 +6,19 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
-// resolveSpecPath returns the spec to operate on: the --spec flag, then
-// biscuit.yaml's spec.path (the cache), then cwd discovery. A discovered
-// choice is persisted so discovery runs once.
-func resolveSpecPath(cmd *cobra.Command, flag string) (string, error) {
+// resolveSpecPath returns the spec to operate on: the --spec flag, then the
+// config's spec.path (the cache), then cwd discovery. A discovered choice is
+// persisted so discovery runs once.
+func resolveSpecPath(cmd *cobra.Command, flag string, cfg *config.Config) (string, error) {
 	if flag != "" {
 		return flag, nil
 	}
-	if cached := spec.CachedSpecPath("."); cached != "" {
-		return cached, nil
+	if cfg != nil && cfg.Spec.Path != "" {
+		return cfg.Spec.Path, nil
 	}
 
 	candidates, err := spec.DiscoverCandidates(".")

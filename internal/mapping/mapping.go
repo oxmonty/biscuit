@@ -18,8 +18,10 @@ import (
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
-// Map converts a loaded spec into the sorted, normalized IR.
-func Map(doc *spec.Document) *ir.API {
+// Map converts a loaded spec into the sorted, normalized IR. overrides is
+// biscuit.yaml's per-operation set, keyed by operationId or "METHOD /path";
+// in-spec x-biscuit-* extensions merge beneath it, sidecar winning field-wise.
+func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	m := doc.Model
 	api := &ir.API{
 		SpecVersion: m.Version,
@@ -75,7 +77,7 @@ func Map(doc *spec.Document) *ir.API {
 		}
 	}
 
-	deriveCommands(api)
+	deriveCommands(api, overrides)
 	return api
 }
 
@@ -101,6 +103,21 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 		}
 		mapped.Tags = append(mapped.Tags, op.Tags...)
 		sort.Strings(mapped.Tags)
+
+		if op.Extensions != nil {
+			for key, node := range op.Extensions.FromOldest() {
+				switch key {
+				case "x-biscuit-name":
+					_ = node.Decode(&mapped.XBiscuit.Name)
+				case "x-biscuit-group":
+					_ = node.Decode(&mapped.XBiscuit.Group)
+				case "x-biscuit-ignore":
+					_ = node.Decode(&mapped.XBiscuit.Ignore)
+				case "x-biscuit-pagination":
+					_ = node.Decode(&mapped.XBiscuit.Pagination)
+				}
+			}
+		}
 
 		// path-item-level parameters apply to every operation beneath it
 		for _, p := range append(append([]*v3.Parameter{}, item.Parameters...), op.Parameters...) {
