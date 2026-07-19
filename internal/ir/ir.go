@@ -55,6 +55,21 @@ type Flag struct {
 	Repeated    bool     // array, passed as a repeated flag
 	Enum        []string // JSON-encoded scalars
 	Default     string   // JSON-encoded; empty means unset
+	Union       *Union   // set when the schema is a oneOf: how variants are told apart
+}
+
+// Union is the discriminator-inference cascade's verdict on a oneOf:
+// explicit discriminator → unique field → JSON type → enum value, opaque
+// when nothing identifies the variants (ogen's cascade).
+type Union struct {
+	Kind     string // discriminator | unique-field | json-type | enum-value | opaque
+	Property string // discriminating property; discriminator and enum-value kinds only
+	Variants []UnionVariant
+}
+
+type UnionVariant struct {
+	Value  string // discriminator value, identifying field name, JSON type, or enum value
+	Schema string // component schema name when the variant is a $ref
 }
 
 type Server struct {

@@ -213,8 +213,13 @@ func (fl *flattener) fill(f *ir.Flag, s *ir.Schema) {
 	}
 	f.Enum = s.Enum
 	f.Default = s.Default
-	if len(s.OneOf) > 0 || len(s.AnyOf) > 0 {
+	if len(s.OneOf) > 0 {
 		f.Type = "json"
+		f.Union = fl.discriminate(s)
+		return
+	}
+	if len(s.AnyOf) > 0 {
+		f.Type = "json" // anyOf carries no exclusive-variant story to infer
 		return
 	}
 	switch s.Type {
