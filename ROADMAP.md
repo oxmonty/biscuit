@@ -32,7 +32,7 @@ Usable two ways:
     - [x] Integrate the spike-chosen linter (vacuum or Speakeasy's) as `biscuit doctor`: blocking correctness errors, advisory quality report with generation-impact notes, `--strict` / `lint.min_grade` gate.
     - [x] Seed `testdata/specs` as a graded ladder: petstore (easy), a mid-size real-world 3.1 spec with oneOf/multi-auth/SSE (medium, e.g. Train Travel API), openai.yaml (hard), plus pathological cases including cyclic `$ref`s.
     - [x] Add the generation benchmark (`gen_bench_test.go`) from day one.
-- [ ] **E3: Mapping and config** — a released `biscuit generate --dry-run` prints the derived command surface for any spec, overridable via `biscuit.yaml`. → [Command grammar](PRD.md#command-grammar), [Argument parsing](PRD.md#argument-parsing)
+- [x] **E3: Mapping and config** — a released `biscuit generate --dry-run` prints the derived command surface for any spec, overridable via `biscuit.yaml`. `v0.1.0-alpha.5` → [Command grammar](PRD.md#command-grammar), [Argument parsing](PRD.md#argument-parsing)
     - [x] Derive the resource/verb tree from tags and paths, including nested sub-resources and stutter removal.
     - [x] Add [stripe/openapi](https://github.com/stripe/openapi) to `testdata/specs` as the tree-derivation stress test: a large real-world 3.x spec with deeply nested resources and polymorphic `oneOf` on nearly every object, a distinct shape from openai.yaml.
     - [x] Implement flag flattening with the schema-adaptive dot-notation depth policy, cycle detection, and a hard depth bound.

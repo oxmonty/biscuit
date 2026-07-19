@@ -75,3 +75,14 @@ Our 122 groups also include ~50 intermediate parents (theirs flat-lists leaves o
 | `-n` | `--n` | short-flag rendering |
 
 **The preview caught a real bug.** Our first flag list had `top-logprobs` three times (`--top-logprobs`, `--body.top-logprobs`, `--body.top-logprobs-2`): allOf members redeclaring a property were merged by append, and the collision renamer dutifully suffixed the duplicates. Fixed (one name, one flag, later members win) with a regression test — the first concrete return on benching against Stainless output, before the harness even exists.
+
+---
+
+## Addendum — release day (2026-07-19, afternoon)
+
+Appended after `v0.1.0-alpha.5` shipped.
+
+- **Released and verified registry-side**: 8 assets on the GitHub release; `biscuit-cli@next` cask at 0.1.0-alpha.5; npm `next` dist-tag resolves for both the shim and the platform packages.
+- **goreleaser ran ~25 min** despite E2's dedicated `release-go-` cache — watch item: confirm the cache actually hits (GitHub evicts after 7 days idle; the alpha cadence should keep it warm, so a miss here means the key still collides or the cache never saved).
+- **README badges moved to badgen.net**, which surfaced a semantics trap: badgen's `assets-dl` counts one release, not totals across releases (goreleaser: 236.8K latest vs 9.07M total via the API — shields' `downloads/total` has no badgen equivalent). The downloads badge therefore pins the release tag, and a new E6 story moves the pin on each release (automation in the release workflow is the intended fix).
+- **Future scope recorded pre-release** (PRD): multi-API MCP toolsets (the open counter to Speakeasy's Gram — multi-source config, never a merged spec; curation over aggregation) and a spec-acquisition Claude Code skill (fetch > derive > author, looping on `doctor --format json` — the machine-readable doctor built this epic is what closes that loop). Both gated on E7.
