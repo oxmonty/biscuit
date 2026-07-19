@@ -60,7 +60,7 @@ A hand-run preview of E6's tier-1 (command-surface) comparison, against the Stai
 |---|---|---|
 | Exact match | 36 | `chat:completions` ↔ `chat completions`, etc. |
 | Match after stripping their `beta:` / `admin:` prefixes | 34 | those namespaces come from Stainless config, not the spec — sidecar `group` overrides reproduce them |
-| Unmatched | 3 | `admin:organization:projects:*:roles` — investigate how our tree folds those paths |
+| Unmatched | 3 | `admin:organization:projects:*:roles` — spec drift: those endpoints don't exist in our committed snapshot (their 1.4.0 tracks a newer revision), so on shared spec content the match is total |
 
 Our 122 groups also include ~50 intermediate parents (theirs flat-lists leaves only) plus endpoints from spec drift — their 1.4.0 tracks a newer spec revision than our committed snapshot.
 
