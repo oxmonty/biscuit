@@ -102,4 +102,4 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
 - [ ] **E12: Registry reach** — installs drop the tap prefix and trust prompt. → [Distribution](PRD.md#distribution)
     - [ ] Submit biscuit-cli to homebrew/core (or homebrew/cask) once notability criteria are met; revisit the npm bare-name dispute at the same time.
 
-**Future (considered, unscheduled)**: hosted generation API ([here](PRD.md#future-hosted-generation-api)); gRPC/proto frontend ([here](PRD.md#protocol-scope)); keychain auth UX (`auth login`, named profiles) ([here](PRD.md#additional-design-considerations)).
+**Future (considered, unscheduled)**: hosted generation API ([here](PRD.md#future-hosted-generation-api)); multi-API MCP toolsets + spec-acquisition skill ([here](PRD.md#future-multi-api-toolsets-and-spec-acquisition)); gRPC/proto frontend ([here](PRD.md#protocol-scope)); keychain auth UX (`auth login`, named profiles) ([here](PRD.md#additional-design-considerations)).

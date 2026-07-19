@@ -94,7 +94,12 @@ Out of scope for now — local generation first — but kept cheap through libra
 
 The hosted site rides the same shape: auth through GitHub, point at a repository, scan it for the spec with the [Spec discovery](#spec-discovery) scanner, and create the `{binary}-cli` repo for the user.
 
----
+### Future: multi-API toolsets and spec acquisition
+
+Considered, unscheduled; scope after E7 proves single-API `mcp serve`.
+
+- **Multi-API toolsets (MCP gateway)** — one generated binary spanning several APIs (`{binary} stripe payment-intents confirm`, `{binary} datadog monitors list`), exposed as one curated MCP server: the open, self-hostable counter to Speakeasy's account-gated [Gram](https://www.speakeasy.com/blog/release-gram-beta) (hosted MCP servers with [curated toolsets](https://www.speakeasy.com/docs/mcp/build/toolsets/create-default-toolset), positioned as an [MCP gateway](https://speakeasy.com/product/gram) against Composio/Arcade/TrueFoundry). Convictions recorded up front: model it as multi-source config — an `apis:` list in `biscuit.yaml` with per-API spec/auth/allowlist — never a synthetic merged OpenAPI document (colliding component names, conflicting `servers` and auth blocks); **curation is the product, aggregation is the plumbing** — three real APIs is 500+ operations, past any MCP client's tool-count/context budget, so allowlisted toolsets carry the value (E8's client spike supplies the tool-count evidence); per-API auth namespacing (`STRIPE_API_KEY`, `DATADOG_API_KEY`) extends the securitySchemes mapping. Rides existing rails: per-API IRs merge under one extra namespace layer in the command tree, and `operations: ignore` is the curation seed.
+- **Spec-acquisition skill** — a Claude Code skill (`.claude/skills/`, the setup-publishing delivery mechanism) that takes users from "no spec" to a graded one, in strict preference order: **fetch** (official published specs — Stripe, Datadog, cloud vendors — and registries like APIs.guru), **derive** (from server code or traffic captures), **author from intent** only as the grounded last resort. The loop closes through shipped machinery: draft → `doctor --format json` → fix findings → repeat until `lint.min_grade` passes, exit codes as the gate. Authored specs stay quarantined behind doctor plus (once the mock server lands) golden-request checks — an invented spec that grades well can still describe an API that doesn't exist, so fetch/derive always outrank author.
 
 ## Surfaces
 
