@@ -202,6 +202,28 @@ func TestFlagsAllOfMerges(t *testing.T) {
 	}
 }
 
+func TestFlagsAllOfDeduplicatesRedeclaredProperties(t *testing.T) {
+	// given: allOf members redeclaring the same property (openai's
+	// create-request chain does this with top_logprobs)
+	schemas := map[string]*ir.Schema{
+		"Base": obj(ir.Property{Name: "top_logprobs", Schema: &ir.Schema{Type: "integer"}}),
+	}
+	body := &ir.Schema{AllOf: []*ir.Schema{
+		{Ref: "Base"},
+		obj(ir.Property{Name: "top_logprobs", Schema: &ir.Schema{Type: "integer"}},
+			ir.Property{Name: "model", Schema: str()}),
+	}}
+	op := &ir.Operation{Method: "POST", Path: "/chat", RequestBody: []ir.MediaType{
+		{Type: "application/json", Schema: body},
+	}}
+
+	// then: one flag per property name, no body./-2 collision suffixes
+	want := []string{"model", "top-logprobs"}
+	if got := flagNames(flagsFor(op, schemas)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("flags = %v, want %v", got, want)
+	}
+}
+
 func TestFlagsParamBodyCollision(t *testing.T) {
 	// given: a query param and a body property both named filter
 	op := &ir.Operation{Method: "POST", Path: "/search", Params: []ir.Param{

@@ -115,16 +115,41 @@ func (fl *flattener) resolve(s *ir.Schema, seen []string) *ir.Schema {
 	}
 	merged := *s
 	merged.AllOf = nil
+	// fresh slices: the merge must never write into s's backing arrays
+	merged.Properties = append([]ir.Property(nil), s.Properties...)
+	// members often redeclare a property (openai's create-request chain does);
+	// one name means one flag, later members winning as the more specific
+	byName := map[string]int{}
+	for i, p := range merged.Properties {
+		byName[p.Name] = i
+	}
+	requiredSet := map[string]bool{}
+	for _, r := range merged.Required {
+		requiredSet[r] = true
+	}
 	for _, member := range s.AllOf {
 		m := fl.resolve(member, seen)
 		if m == nil {
 			continue
 		}
-		merged.Properties = append(merged.Properties, m.Properties...)
-		merged.Required = append(merged.Required, m.Required...)
+		for _, p := range m.Properties {
+			if i, dup := byName[p.Name]; dup {
+				merged.Properties[i] = p
+			} else {
+				byName[p.Name] = len(merged.Properties)
+				merged.Properties = append(merged.Properties, p)
+			}
+		}
+		for _, r := range m.Required {
+			requiredSet[r] = true
+		}
 		if merged.Type == "" {
 			merged.Type = m.Type
 		}
+	}
+	merged.Required = make([]string, 0, len(requiredSet))
+	for r := range requiredSet {
+		merged.Required = append(merged.Required, r)
 	}
 	sort.Slice(merged.Properties, func(i, j int) bool {
 		return merged.Properties[i].Name < merged.Properties[j].Name
