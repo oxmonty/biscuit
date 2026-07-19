@@ -31,6 +31,11 @@ func deriveCommands(api *ir.API) {
 		}
 	}
 
+	schemaIdx := make(map[string]*ir.Schema, len(api.Schemas))
+	for _, s := range api.Schemas {
+		schemaIdx[s.Name] = s.Schema
+	}
+
 	root := newNode("")
 	for i := range api.Operations {
 		op := &api.Operations[i]
@@ -59,6 +64,7 @@ func deriveCommands(api *ir.API) {
 			OperationID: op.ID,
 			Summary:     op.Summary,
 			Deprecated:  op.Deprecated,
+			Flags:       flagsFor(op, schemaIdx),
 		}
 	}
 

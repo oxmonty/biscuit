@@ -39,6 +39,22 @@ type Verb struct {
 	OperationID string // empty when the name was path-derived
 	Summary     string
 	Deprecated  bool
+	Flags       []Flag // sorted by Name
+}
+
+// Flag is one statically defined flag on a verb. Static definition is the
+// constraint the whole layered argument design hangs on: completions and
+// --help need the full set known at generation time.
+type Flag struct {
+	Name        string   // kebab-case; dots mirror body nesting (--address.city)
+	In          string   // path | query | header | body
+	BodyPath    []string // body only: original property names from the body root
+	Type        string   // string | integer | number | boolean | json
+	Description string
+	Required    bool
+	Repeated    bool     // array, passed as a repeated flag
+	Enum        []string // JSON-encoded scalars
+	Default     string   // JSON-encoded; empty means unset
 }
 
 type Server struct {
