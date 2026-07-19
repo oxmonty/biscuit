@@ -17,6 +17,28 @@ type API struct {
 	Webhooks    []Operation // sorted by (Path, Method); Path holds the webhook name
 	Schemas     []NamedSchema
 	Security    []SecurityScheme
+	Commands    []Command // resource/verb tree; children and verbs sorted by name
+	RootVerbs   []Verb    // operations with no resource segments and no tag: {binary} verb
+	Diagnostics []string  // mapping-level warnings (name collisions etc.), surfaced by dry-run
+}
+
+// Command is one resource node in the derived command tree:
+// {binary} [resource [sub-resource...]] verb --flag value.
+type Command struct {
+	Name        string // kebab-case
+	Description string // tag description when a tag matches this node's name
+	Verbs       []Verb
+	Children    []Command
+}
+
+// Verb is one invocable operation under a resource node.
+type Verb struct {
+	Name        string // kebab-case
+	Method      string
+	Path        string
+	OperationID string // empty when the name was path-derived
+	Summary     string
+	Deprecated  bool
 }
 
 type Server struct {

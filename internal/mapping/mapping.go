@@ -75,6 +75,7 @@ func Map(doc *spec.Document) *ir.API {
 		}
 	}
 
+	deriveCommands(api)
 	return api
 }
 
