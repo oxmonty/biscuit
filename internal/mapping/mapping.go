@@ -14,12 +14,34 @@ import (
 	"github.com/pb33f/libopenapi/orderedmap"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/ir"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
-// Map converts a loaded spec into the sorted, normalized IR.
-func Map(doc *spec.Document) *ir.API {
+// OverridesFromConfig lifts the sidecar's per-operation entries into the
+// shape Map applies.
+func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
+	if cfg == nil || len(cfg.Operations) == 0 {
+		return nil
+	}
+	overrides := make(map[string]ir.Override, len(cfg.Operations))
+	for key, op := range cfg.Operations {
+		overrides[key] = ir.Override{
+			Name:       op.Name,
+			Group:      op.Group,
+			Ignore:     op.Ignore,
+			Aliases:    op.Aliases,
+			Pagination: op.Pagination,
+		}
+	}
+	return overrides
+}
+
+// Map converts a loaded spec into the sorted, normalized IR. overrides is
+// biscuit.yaml's per-operation set, keyed by operationId or "METHOD /path";
+// in-spec x-biscuit-* extensions merge beneath it, sidecar winning field-wise.
+func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	m := doc.Model
 	api := &ir.API{
 		SpecVersion: m.Version,
@@ -75,6 +97,7 @@ func Map(doc *spec.Document) *ir.API {
 		}
 	}
 
+	deriveCommands(api, overrides)
 	return api
 }
 
@@ -100,6 +123,21 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 		}
 		mapped.Tags = append(mapped.Tags, op.Tags...)
 		sort.Strings(mapped.Tags)
+
+		if op.Extensions != nil {
+			for key, node := range op.Extensions.FromOldest() {
+				switch key {
+				case "x-biscuit-name":
+					_ = node.Decode(&mapped.XBiscuit.Name)
+				case "x-biscuit-group":
+					_ = node.Decode(&mapped.XBiscuit.Group)
+				case "x-biscuit-ignore":
+					_ = node.Decode(&mapped.XBiscuit.Ignore)
+				case "x-biscuit-pagination":
+					_ = node.Decode(&mapped.XBiscuit.Pagination)
+				}
+			}
+		}
 
 		// path-item-level parameters apply to every operation beneath it
 		for _, p := range append(append([]*v3.Parameter{}, item.Parameters...), op.Parameters...) {

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"go.yaml.in/yaml/v4"
 )
 
 // ErrNoSpecFound means discovery ran and found nothing; the CLI maps it to exit 3.
@@ -19,24 +17,6 @@ var ErrNoSpecFound = errors.New("no OpenAPI spec found (looked for openapi|swagg
 var wellKnown = []string{
 	"openapi.yaml", "openapi.yml", "openapi.json",
 	"swagger.yaml", "swagger.yml", "swagger.json",
-}
-
-// CachedSpecPath returns spec.path from dir/biscuit.yaml — the config is the
-// cache, so a hit means discovery is skipped entirely.
-func CachedSpecPath(dir string) string {
-	data, err := os.ReadFile(filepath.Join(dir, "biscuit.yaml"))
-	if err != nil {
-		return ""
-	}
-	var cfg struct {
-		Spec struct {
-			Path string `yaml:"path"`
-		} `yaml:"spec"`
-	}
-	if yaml.Unmarshal(data, &cfg) != nil {
-		return ""
-	}
-	return cfg.Spec.Path
 }
 
 // DiscoverCandidates scans dir (flat — deeper enumeration ships with E8's

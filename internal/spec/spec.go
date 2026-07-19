@@ -75,9 +75,12 @@ func Load(path string) (*Document, error) {
 	if buildErr != nil {
 		// $refs inside vendor extensions are opaque per the OpenAPI spec, but
 		// libopenapi chases them anyway; failing to resolve one is advisory.
+		// Circular references arrive as build errors too when the cycle is a
+		// required chain ("infinite") — still advisory per the cycle policy;
+		// stripe.yaml has two such cycles.
 		extRefs := model.Index.GetExtensionRefsSequenced()
 		for _, e := range unwrapAll(buildErr) {
-			if refersToExtensionRef(e, extRefs) {
+			if refersToExtensionRef(e, extRefs) || strings.Contains(e, "circular reference") {
 				d.Diagnostics = append(d.Diagnostics, e)
 			} else {
 				problems = append(problems, e)

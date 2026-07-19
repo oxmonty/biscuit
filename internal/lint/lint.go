@@ -25,19 +25,33 @@ type Finding struct {
 	Severity string
 	Message  string
 	Line     int
-	Impact   string // generation impact + remediation; empty when the rule is generic quality
+	// Impact is a %d/%s template ("%d command%s ...") — the CLI fills the
+	// count in once findings are grouped by rule. Empty when the rule is
+	// generic quality with no generation-specific story.
+	Impact      string
+	Remediation string // fix advice paired with Impact; empty when Impact is empty
 }
 
-// impact maps vacuum rule ids to what the finding means for the generated CLI.
-// Advisory only — blocking correctness lives in spec.Load. Tuning this set on
-// the test-ladder specs is a tracked open question in the PRD.
+// impact and remediation map vacuum rule ids to what the finding means for
+// the generated CLI and how to fix it. Advisory only — blocking correctness
+// lives in spec.Load. Tuning this set on the test-ladder specs is a tracked
+// open question in the PRD.
 var impact = map[string]string{
-	"operation-operationId": "commands will be path-derived (e.g. post-v1-users-id-activate); fix in the spec, or map names in biscuit.yaml",
-	"operation-tags":        "untagged operations flatten the command tree; tag them to group commands by resource",
-	"operation-description": "generated --help will be empty for these commands, which guts agent usability; add descriptions",
-	"operation-summary":     "command short help will be empty; add summaries",
-	"oas3-missing-example":  "no schema examples weakens mock-server responses and the synthesized bench corpus",
-	"component-description": "generated flag help for these types will be empty; add descriptions",
+	"operation-operationId": "%d command%s path-derived instead of named (e.g. post-v1-users-id-activate)",
+	"operation-tags":        "%d operation%s untagged: command tree flattens",
+	"operation-description": "%d command%s missing a description: generated --help empty, which guts agent usability",
+	"operation-summary":     "%d command%s missing a summary: short help empty",
+	"oas3-missing-example":  "%d site%s missing an example: mock-server responses and bench corpus weakened",
+	"component-description": "%d type%s missing a description: generated flag help empty",
+}
+
+var remediation = map[string]string{
+	"operation-operationId": "fix in the spec, or map names in biscuit.yaml",
+	"operation-tags":        "tag them to group commands by resource",
+	"operation-description": "add descriptions",
+	"operation-summary":     "add summaries",
+	"oas3-missing-example":  "add examples",
+	"component-description": "add descriptions",
 }
 
 // biscuitRuleSet is the thin generation-relevant selection from vacuum's
@@ -81,11 +95,12 @@ func Run(doc *spec.Document) *Report {
 			severity = "info" // vacuum's circular-references rule leaves this blank
 		}
 		report.Findings = append(report.Findings, Finding{
-			Rule:     r.RuleId,
-			Severity: severity,
-			Message:  r.Message,
-			Line:     r.Range.Start.Line,
-			Impact:   impact[r.RuleId],
+			Rule:        r.RuleId,
+			Severity:    severity,
+			Message:     r.Message,
+			Line:        r.Range.Start.Line,
+			Impact:      impact[r.RuleId],
+			Remediation: remediation[r.RuleId],
 		})
 	}
 	sort.Slice(report.Findings, func(i, j int) bool {

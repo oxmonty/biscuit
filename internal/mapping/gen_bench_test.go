@@ -17,7 +17,7 @@ func benchmarkMap(b *testing.B, path string) {
 		if err != nil {
 			b.Fatalf("Load(%s): %v", path, err)
 		}
-		mapSink = Map(doc)
+		mapSink = Map(doc, nil)
 	}
 }
 
@@ -31,4 +31,8 @@ func BenchmarkMap_TrainTravel(b *testing.B) {
 
 func BenchmarkMap_OpenAI(b *testing.B) {
 	benchmarkMap(b, ladder+"openai.yaml")
+}
+
+func BenchmarkMap_Stripe(b *testing.B) {
+	benchmarkMap(b, ladder+"stripe.yaml")
 }

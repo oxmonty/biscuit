@@ -17,6 +17,61 @@ type API struct {
 	Webhooks    []Operation // sorted by (Path, Method); Path holds the webhook name
 	Schemas     []NamedSchema
 	Security    []SecurityScheme
+	Commands    []Command // resource/verb tree; children and verbs sorted by name
+	RootVerbs   []Verb    // operations with no resource segments and no tag: {binary} verb
+	Diagnostics []string  // mapping-level warnings (name collisions etc.), surfaced by dry-run
+}
+
+// Command is one resource node in the derived command tree:
+// {binary} [resource [sub-resource...]] verb --flag value.
+type Command struct {
+	Name        string // kebab-case
+	Description string // tag description when a tag matches this node's name
+	Verbs       []Verb
+	Children    []Command
+}
+
+// Verb is one invocable operation under a resource node.
+type Verb struct {
+	Name        string // kebab-case
+	Method      string
+	Path        string
+	OperationID string // empty when the name was path-derived
+	Summary     string
+	Deprecated  bool
+	Aliases     []string // kebab-case, from overrides
+	Pagination  string   // pagination hint, from overrides
+	Flags       []Flag   // sorted by Name
+}
+
+// Flag is one statically defined flag on a verb. Static definition is the
+// constraint the whole layered argument design hangs on: completions and
+// --help need the full set known at generation time.
+type Flag struct {
+	Name        string   // kebab-case; dots mirror body nesting (--address.city)
+	In          string   // path | query | header | body
+	BodyPath    []string // body only: original property names from the body root
+	Type        string   // string | integer | number | boolean | json
+	Description string
+	Required    bool
+	Repeated    bool     // array, passed as a repeated flag
+	Enum        []string // JSON-encoded scalars
+	Default     string   // JSON-encoded; empty means unset
+	Union       *Union   // set when the schema is a oneOf: how variants are told apart
+}
+
+// Union is the discriminator-inference cascade's verdict on a oneOf:
+// explicit discriminator → unique field → JSON type → enum value, opaque
+// when nothing identifies the variants (ogen's cascade).
+type Union struct {
+	Kind     string // discriminator | unique-field | json-type | enum-value | opaque
+	Property string // discriminating property; discriminator and enum-value kinds only
+	Variants []UnionVariant
+}
+
+type UnionVariant struct {
+	Value  string // discriminator value, identifying field name, JSON type, or enum value
+	Schema string // component schema name when the variant is a $ref
 }
 
 type Server struct {
@@ -40,6 +95,18 @@ type Operation struct {
 	Params      []Param // sorted by (In, Name)
 	RequestBody []MediaType
 	Responses   []Response
+	XBiscuit    Override // x-biscuit-* extension values carried in-spec
+}
+
+// Override adjusts how one operation maps into the command tree. It rides
+// in-spec as x-biscuit-* extensions or in biscuit.yaml, sidecar winning
+// field-wise (non-zero wins — a sidecar zero can't unset an extension value).
+type Override struct {
+	Name       string   // verb name
+	Group      string   // whitespace-separated resource chain
+	Ignore     bool     // drop the operation from the CLI
+	Aliases    []string // extra verb names (sidecar only)
+	Pagination string   // hint for the execution layer
 }
 
 type Param struct {
