@@ -14,9 +14,29 @@ import (
 	"github.com/pb33f/libopenapi/orderedmap"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/ir"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
+
+// OverridesFromConfig lifts the sidecar's per-operation entries into the
+// shape Map applies.
+func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
+	if cfg == nil || len(cfg.Operations) == 0 {
+		return nil
+	}
+	overrides := make(map[string]ir.Override, len(cfg.Operations))
+	for key, op := range cfg.Operations {
+		overrides[key] = ir.Override{
+			Name:       op.Name,
+			Group:      op.Group,
+			Ignore:     op.Ignore,
+			Aliases:    op.Aliases,
+			Pagination: op.Pagination,
+		}
+	}
+	return overrides
+}
 
 // Map converts a loaded spec into the sorted, normalized IR. overrides is
 // biscuit.yaml's per-operation set, keyed by operationId or "METHOD /path";

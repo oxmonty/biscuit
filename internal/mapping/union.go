@@ -19,7 +19,7 @@ func (fl *flattener) discriminate(s *ir.Schema) *ir.Union {
 		u := &ir.Union{Kind: "discriminator", Property: s.Discriminator.PropertyName}
 		if len(s.Discriminator.Mapping) > 0 {
 			for _, m := range s.Discriminator.Mapping {
-				u.Variants = append(u.Variants, ir.UnionVariant{Value: m.Value, Schema: m.Schema})
+				u.Variants = append(u.Variants, ir.UnionVariant(m))
 			}
 		} else {
 			// no mapping: the wire value is the schema name, per the OpenAPI

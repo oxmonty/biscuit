@@ -22,6 +22,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newInitCommand())
+	root.AddCommand(newGenerateCommand())
 	root.SilenceUsage = true // usage on errors drowns the actual failure; exit 2 already marks misuse
 	return root
 }
