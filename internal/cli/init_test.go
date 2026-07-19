@@ -63,11 +63,12 @@ func TestInitScaffoldsFromGapAnalysis(t *testing.T) {
 	}
 }
 
-func TestInitRefusesToClobber(t *testing.T) {
-	// given: a cwd that already has a biscuit.yaml
+func TestInitRefusesToClobberRealConfig(t *testing.T) {
+	// given: a biscuit.yaml already carrying overrides
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.WriteFile(config.FileName, []byte("version: 1\n"), 0o644); err != nil {
+	cfgYAML := "operations:\n  listUsers:\n    name: ls\n"
+	if err := os.WriteFile(config.FileName, []byte(cfgYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,5 +76,28 @@ func TestInitRefusesToClobber(t *testing.T) {
 	_, err := runInit(t)
 	if err == nil || ExitCode(err) != ExitUsage {
 		t.Errorf("err = %v (exit %d), want usage error", err, ExitCode(err))
+	}
+}
+
+func TestInitAcceptsDiscoveryWrittenConfig(t *testing.T) {
+	// given: the spec.path-only file discovery persists (doctor ran first)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.WriteFile("openapi.yaml", []byte(idlessSpec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.FileName, []byte("spec:\n  path: openapi.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// when: running init after doctor's discovery
+	if _, err := runInit(t); err != nil {
+		t.Fatalf("init after discovery: %v", err)
+	}
+
+	// then: the scaffold replaced the cache file, spec.path preserved
+	cfg, err := config.Load(".")
+	if err != nil || cfg.Spec.Path != "openapi.yaml" {
+		t.Errorf("config = %+v, err = %v", cfg, err)
 	}
 }

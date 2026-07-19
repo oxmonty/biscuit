@@ -23,11 +23,18 @@ func newInitCommand() *cobra.Command {
 		Short: "Scaffold a starter biscuit.yaml seeded from doctor's gap analysis",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, err := os.Stat(config.FileName); err == nil {
-				return &usageError{fmt.Errorf("%s already exists; edit it directly or remove it first", config.FileName)}
+			existing, err := config.Load(".")
+			if err != nil {
+				return &usageError{err}
+			}
+			// spec discovery persists spec.path before init ever runs
+			// (doctor → init is the canonical flow); only a config carrying
+			// real overrides refuses to be regenerated
+			if _, statErr := os.Stat(config.FileName); statErr == nil && !onlySpecPath(existing) {
+				return &usageError{fmt.Errorf("%s already carries configuration; edit it directly or remove it first", config.FileName)}
 			}
 
-			path, err := resolveSpecPath(cmd, specPath, nil)
+			path, err := resolveSpecPath(cmd, specPath, existing)
 			if err != nil {
 				return err
 			}
@@ -79,6 +86,10 @@ func renderInitConfig(specPath string, report *lint.Report, api *ir.API) string 
 		}
 	}
 	return b.String()
+}
+
+func onlySpecPath(cfg *config.Config) bool {
+	return cfg.Lint == (config.Lint{}) && len(cfg.Operations) == 0
 }
 
 type anonymousVerb struct {
