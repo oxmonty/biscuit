@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.0-alpha.5](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.4...v0.1.0-alpha.5) (2026-07-19)
+
+
+### Features
+
+* biscuit generate --dry-run atop the plan/write split ([314ddaf](https://github.com/oxmonty/biscuit/commit/314ddafa879601024f9b82b72853c7d509e13eec))
+* **cli:** biscuit init scaffolds config from doctor gap analysis ([5702f5c](https://github.com/oxmonty/biscuit/commit/5702f5c6f3e2849d0ad89b98158e0fa3fa2be3ca))
+* **cli:** show a welcome splash on bare TTY invocation ([e276f87](https://github.com/oxmonty/biscuit/commit/e276f87b08e8ed045102a5052b19e1b9f7b6414d))
+* **config:** schema-validated biscuit.yaml with x-biscuit-* overrides ([71e0bce](https://github.com/oxmonty/biscuit/commit/71e0bcef7e0947e9f91d6b42e85dbbcdc366dc22))
+* **doctor:** humane diagnostics, folded counts, TTY colors, --format json ([d38bf9c](https://github.com/oxmonty/biscuit/commit/d38bf9c4279733ba3aa2daedebfab8af5eb9a1b3))
+* E3 mapping and config — dry-run command surface for any spec ([38497c8](https://github.com/oxmonty/biscuit/commit/38497c8b3b9186a7d3ff0b3d26cc5b05fdeb6129))
+* **install:** add curl installer as a third distribution channel ([d690574](https://github.com/oxmonty/biscuit/commit/d690574a94a1cd4edf0aa92af519762daaf9e4b1))
+* **mapping:** derive the resource/verb command tree ([705593b](https://github.com/oxmonty/biscuit/commit/705593babf502c91038aff93efde446eec549767))
+* **mapping:** flatten request schemas into static flags ([97230b1](https://github.com/oxmonty/biscuit/commit/97230b194856aa5b52e67337fdd512bc17858df7))
+* **mapping:** infer oneOf discriminators via the ogen cascade ([a3915f7](https://github.com/oxmonty/biscuit/commit/a3915f703b4808b651c37837e229e9de20340922))
+
+
+### Bug Fixes
+
+* **cli:** align quickstart command columns with computed padding ([0548475](https://github.com/oxmonty/biscuit/commit/0548475d8667d85e3ef8e3a372205001177d0387))
+* **cli:** let init regenerate a config that only caches spec.path ([087411d](https://github.com/oxmonty/biscuit/commit/087411db37aad69d6c5d55eb634dd5f0b15752da))
+* **cli:** tighten quickstart column gap for narrow terminals ([4ce2e3d](https://github.com/oxmonty/biscuit/commit/4ce2e3d898c61f8776bd712e0ccab4e38a66d2f4))
+* **doctor:** rank findings by severity, label blank severities, add summary footer ([df60050](https://github.com/oxmonty/biscuit/commit/df60050b7b03f3d6b7974b5745059776b5b83b2a))
+* **mapping:** dedupe properties redeclared across allOf members ([6d87966](https://github.com/oxmonty/biscuit/commit/6d87966336d05a5175ec1718fd48edb93fa01486))
+* **spec:** keep required-chain circular references advisory ([3043249](https://github.com/oxmonty/biscuit/commit/304324918cf8a8131bd87e19f4f7a53a58f52098))
+
+
+### Reverts
+
+* **cli:** drop quickstart-in-help prototype, keep it scoped for E4 ([954d8d3](https://github.com/oxmonty/biscuit/commit/954d8d38fd8c6f12e32a93a0f646c0739e4977f6))
+
 ## [0.1.0-alpha.4](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.3...v0.1.0-alpha.4) (2026-07-17)
 
 
