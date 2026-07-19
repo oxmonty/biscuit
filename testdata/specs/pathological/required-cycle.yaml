@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: Required Cycle
+  version: 1.0.0
+paths:
+  /a:
+    get:
+      operationId: getA
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/A'
+components:
+  schemas:
+    A:
+      type: object
+      required: [b]
+      properties:
+        b:
+          $ref: '#/components/schemas/B'
+    B:
+      type: object
+      required: [a]
+      properties:
+        a:
+          $ref: '#/components/schemas/A'

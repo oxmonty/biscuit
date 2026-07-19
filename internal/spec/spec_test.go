@@ -74,6 +74,26 @@ func TestLoadCyclicRefsIsSafe(t *testing.T) {
 	}
 }
 
+func TestLoadRequiredCycleIsAdvisory(t *testing.T) {
+	// given: a required-chain cycle, which libopenapi reports as a build error
+	// ("infinite circular reference"), not just an index finding
+	doc, err := Load(ladder + "pathological/required-cycle.yaml")
+
+	// then: loading still succeeds and the cycle lands in diagnostics
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	found := false
+	for _, d := range doc.Diagnostics {
+		if strings.Contains(d, "circular") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Diagnostics = %v, want a circular-reference entry", doc.Diagnostics)
+	}
+}
+
 func TestLoadUnresolvableRefIsBlocking(t *testing.T) {
 	// given: a spec whose operations $ref schemas that do not exist
 	_, err := Load(ladder + "pathological/unresolvable-ref.yaml")
