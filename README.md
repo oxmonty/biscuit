@@ -1,7 +1,14 @@
 # biscuit
 
-<a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img alt="Downloads of the v0.1.0-alpha.5 release" src="https://badgen.net/github/assets-dl/oxmonty/biscuit/v0.1.0-alpha.5?label=downloads"></a>
-<a href="https://github.com/oxmonty/biscuit/releases/latest"><img alt="Latest release" src="https://badgen.net/github/release/oxmonty/biscuit?label=release&color=1c1c1a"></a>
+<p align="left">
+  <a href="https://github.com/oxmonty/biscuit/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/oxmonty/biscuit/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/oxmonty/biscuit/releases"><img src="https://img.shields.io/github/v/release/oxmonty/biscuit?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img src="https://img.shields.io/github/downloads/oxmonty/biscuit/v0.1.0-alpha.5/total?label=downloads&style=for-the-badge" alt="Downloads of the v0.1.0-alpha.5 release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue.svg?style=for-the-badge" alt="GPL-2.0 License"></a>
+  <!-- Uncomment when the Discord server is up (fill in invite code and server id):
+  <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
+  -->
+</p>
 
 Convert an OpenAPI 3.x spec into a complete, production-ready CLI repository. An open, self-hostable alternative to the Stainless CLI generator.
 

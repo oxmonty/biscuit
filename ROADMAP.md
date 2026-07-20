@@ -83,6 +83,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
 - [ ] **E7: MCP serve** — every generated CLI is an MCP server. → [MCP subcommand](PRD.md#mcp-subcommand)
     - [ ] Map operations to MCP tools and serve over stdio, then Streamable HTTP, on the official `modelcontextprotocol/go-sdk`, pinning the targeted MCP protocol revision.
     - [ ] Template a project-scope `.mcp.json` into generated repos so opening one in Claude Code wires the CLI's tools automatically — zero-command team onboarding. → [MCP subcommand](PRD.md#mcp-subcommand)
+    - [ ] Generated README documents the HTTP-transport sidecar deployment for API owners (run `{binary} mcp serve --transport http` next to the API, reverse-proxy `/mcp` to it, env-var auth); public-facing endpoint auth is deferred to the MCP-gateway future item. → [MCP subcommand](PRD.md#mcp-subcommand)
 - [ ] **E8: Chat TUI** — one Bubble Tea interface backs `mcp chat`, `{binary} chat`, and interactive SSE. → [Protocol scope](PRD.md#protocol-scope), [MCP subcommand](PRD.md#mcp-subcommand), [Spec discovery](PRD.md#spec-discovery)
     - [ ] Spike the MCP-client integration that the chat strategy leans on: drive a generated `{binary} mcp serve` from Claude Code, Warp, and [pi](https://github.com/earendil-works/pi) end to end (tool discovery, streaming, env auth, stdio and Streamable HTTP) — rich chat UX belongs to these clients, not an owned TUI; if they can't carry it, the pi-port question reopens with evidence. → [MCP subcommand](PRD.md#mcp-subcommand)
     - [ ] Build the minimal built-in TUI — serviceable, not spectacular — with streaming and tool-call display, stealing the UX decisions of [pi](https://github.com/earendil-works/pi) on Bubble Tea.
@@ -100,6 +101,7 @@ _MVP line — E1–E6 ship as v0.1: an installable biscuit that generates a prod
     - [ ] Template the shim, per-platform packages, and ordered OIDC publish job, with prereleases published under the `next` dist-tag (never `latest`).
 - [ ] **E11: Adoption** — Stainless-generated repos migrate to biscuit in one command. → [Competitive landscape](PRD.md#competitive-landscape)
     - [ ] Ship `biscuit adopt --repo --spec` proposing a parity-maximizing config and taking over the release pipeline.
+    - [ ] Stand up a Discord server (invite link + README badge) as the support channel for arriving users; seed it with #help, #show-your-cli, and #announcements wired to release notes.
 - [ ] **E12: Registry reach** — installs drop the tap prefix and trust prompt. → [Distribution](PRD.md#distribution)
     - [ ] Submit biscuit-cli to homebrew/core (or homebrew/cask) once notability criteria are met; revisit the npm bare-name dispute at the same time.
 - [ ] **E13: Doctor deepening** — every advisory speaks in generation impact, and `doctor --fix` repairs what needs no invention. Schedulable any time after E3; natural slot before E9 (the update-PR doctor delta) and E11 (`adopt` leans on the gap analysis). → [Spec quality gate](PRD.md#spec-quality-gate-biscuit-doctor)
