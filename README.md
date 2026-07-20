@@ -1,12 +1,12 @@
 # biscuit
 
 <p align="left">
-  <a href="https://github.com/oxmonty/biscuit/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/oxmonty/biscuit/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/oxmonty/biscuit/releases"><img src="https://img.shields.io/github/v/release/oxmonty/biscuit?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img src="https://img.shields.io/github/downloads/oxmonty/biscuit/v0.1.0-alpha.5/total?label=downloads&style=for-the-badge" alt="Downloads of the v0.1.0-alpha.5 release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue.svg?style=for-the-badge" alt="GPL-2.0 License"></a>
+  <a href="https://github.com/oxmonty/biscuit/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/oxmonty/biscuit/ci.yml?branch=main&style=for-the-badge" height="22" alt="CI status"></a>
+  <a href="https://github.com/oxmonty/biscuit/releases"><img src="https://img.shields.io/github/v/release/oxmonty/biscuit?include_prereleases&style=for-the-badge" height="22" alt="GitHub release"></a>
+  <a href="https://somsubhra.github.io/github-release-stats/?username=oxmonty&repository=biscuit"><img src="https://img.shields.io/github/downloads/oxmonty/biscuit/v0.1.0-alpha.5/total?label=downloads&style=for-the-badge" height="22" alt="Downloads of the v0.1.0-alpha.5 release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue.svg?style=for-the-badge" height="22" alt="GPL-2.0 License"></a>
   <!-- Uncomment when the Discord server is up (fill in invite code and server id):
-  <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
+  <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" height="22" alt="Discord"></a>
   -->
 </p>
 
