@@ -22,6 +22,8 @@ Options:
     -h, --help                 Display this help message
     -v, --version <version>    Install a specific version (e.g. 0.1.0-alpha.4)
     -c, --channel <channel>    stable or next (default: next — no stable release yet)
+    -b, --binary <path>        Install this local binary instead of downloading a release
+                                (skips checksum verification; for testing install/PATH logic)
         --no-modify-path       Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
@@ -33,6 +35,7 @@ EOF
 requested_version=""
 channel="next"
 no_modify_path=false
+binary_path=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -43,6 +46,9 @@ while [[ $# -gt 0 ]]; do
         -c|--channel)
             [[ -n "${2:-}" ]] || { echo -e "${RED}Error: --channel requires an argument${NC}"; exit 1; }
             channel="$2"; shift 2 ;;
+        -b|--binary)
+            [[ -n "${2:-}" ]] || { echo -e "${RED}Error: --binary requires an argument${NC}"; exit 1; }
+            binary_path="$2"; shift 2 ;;
         --no-modify-path) no_modify_path=true; shift ;;
         *) echo -e "${ORANGE}Warning: unknown option '$1'${NC}" >&2; shift ;;
     esac
@@ -69,41 +75,92 @@ esac
 archive_ext="tar.gz"
 [[ "$os" == "windows" ]] && archive_ext="zip"
 
-if [[ -z "$requested_version" ]]; then
-    # /releases/latest 404s until the first stable release exists; /releases
-    # is newest-first including prereleases, which is what --channel next wants.
-    if [[ "$channel" == "stable" ]]; then
-        body=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" || true)
-        requested_version=$(echo "$body" | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
-        if [[ -z "$requested_version" ]]; then
-            echo -e "${RED}Error: no stable release published yet. Use --channel next.${NC}"
-            exit 1
-        fi
-    else
-        body=$(curl -fsSL "https://api.github.com/repos/$REPO/releases")
-        requested_version=$(echo "$body" | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
-    fi
-fi
+binary_name="biscuit"
+[[ "$os" == "windows" ]] && binary_name="biscuit.exe"
 
-filename="biscuit_${requested_version}_${os}_${arch}.${archive_ext}"
-url="https://github.com/$REPO/releases/download/v${requested_version}/${filename}"
+# fetches $1 into $2, printing the HTTP status code (no -f: a 404 must not
+# abort curl, so callers can tell "not found" apart from a network failure)
+download() {
+    curl -sSL -o "$2" -w '%{http_code}' "$1"
+}
 
-echo -e "${MUTED}Downloading${NC} biscuit ${requested_version} ${MUTED}(${os}/${arch})${NC}"
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
-curl -fsSL "$url" -o "$tmpdir/$filename" || { echo -e "${RED}Error: download failed — $url${NC}"; exit 1; }
-
-if [[ "$archive_ext" == "zip" ]]; then
-    command -v unzip >/dev/null || { echo -e "${RED}Error: 'unzip' is required${NC}"; exit 1; }
-    unzip -oq "$tmpdir/$filename" -d "$tmpdir"
+if [[ -n "$binary_path" ]]; then
+    [[ -f "$binary_path" ]] || { echo -e "${RED}Error: --binary file not found: $binary_path${NC}"; exit 1; }
+    cp "$binary_path" "$INSTALL_DIR/$binary_name"
+    chmod +x "$INSTALL_DIR/$binary_name"
+    echo -e "${MUTED}Installed${NC} $binary_path ${MUTED}->${NC} $INSTALL_DIR/$binary_name"
 else
-    tar -xzf "$tmpdir/$filename" -C "$tmpdir"
-fi
+    if [[ -z "$requested_version" ]]; then
+        # /releases/latest 404s until the first stable release exists; /releases
+        # is newest-first including prereleases, which is what --channel next wants.
+        if [[ "$channel" == "stable" ]]; then
+            body=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" || true)
+            requested_version=$(echo "$body" | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
+            if [[ -z "$requested_version" ]]; then
+                echo -e "${RED}Error: no stable release published yet. Use --channel next.${NC}"
+                exit 1
+            fi
+        else
+            body=$(curl -fsSL "https://api.github.com/repos/$REPO/releases")
+            requested_version=$(echo "$body" | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
+        fi
+    fi
 
-binary="biscuit"
-[[ "$os" == "windows" ]] && binary="biscuit.exe"
-mv "$tmpdir/$binary" "$INSTALL_DIR/$binary"
-chmod +x "$INSTALL_DIR/$binary"
+    filename="biscuit_${requested_version}_${os}_${arch}.${archive_ext}"
+    base_url="https://github.com/$REPO/releases/download/v${requested_version}"
+    url="$base_url/${filename}"
+
+    echo -e "${MUTED}Downloading${NC} biscuit ${requested_version} ${MUTED}(${os}/${arch})${NC}"
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+
+    status=$(download "$url" "$tmpdir/$filename") || status="000"
+    if [[ "$status" == "404" ]]; then
+        echo -e "${RED}Error: release v${requested_version} not found — see https://github.com/$REPO/releases${NC}"
+        exit 1
+    elif [[ "$status" != "200" ]]; then
+        echo -e "${RED}Error: download failed (HTTP $status) — $url${NC}"
+        exit 1
+    fi
+
+    checksums_file="$tmpdir/checksums.txt"
+    checksums_status=$(download "$base_url/checksums.txt" "$checksums_file") || checksums_status="000"
+    if [[ "$checksums_status" != "200" ]]; then
+        echo -e "${RED}Error: checksums.txt not found for release v${requested_version} — cannot verify download integrity${NC}"
+        exit 1
+    fi
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual_checksum=$(sha256sum "$tmpdir/$filename" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        actual_checksum=$(shasum -a 256 "$tmpdir/$filename" | awk '{print $1}')
+    else
+        echo -e "${RED}Error: neither 'sha256sum' nor 'shasum' is available to verify the download${NC}"
+        exit 1
+    fi
+
+    expected_checksum=$(awk -v f="$filename" '$2 == f { print $1; exit }' "$checksums_file")
+    if [[ -z "$expected_checksum" ]]; then
+        echo -e "${RED}Error: no checksum entry for $filename in checksums.txt${NC}"
+        exit 1
+    fi
+    if [[ "$actual_checksum" != "$expected_checksum" ]]; then
+        echo -e "${RED}Error: checksum mismatch for $filename${NC}"
+        echo -e "${RED}  expected: $expected_checksum${NC}"
+        echo -e "${RED}  actual:   $actual_checksum${NC}"
+        exit 1
+    fi
+
+    if [[ "$archive_ext" == "zip" ]]; then
+        command -v unzip >/dev/null || { echo -e "${RED}Error: 'unzip' is required${NC}"; exit 1; }
+        unzip -oq "$tmpdir/$filename" -d "$tmpdir"
+    else
+        tar -xzf "$tmpdir/$filename" -C "$tmpdir"
+    fi
+
+    mv "$tmpdir/$binary_name" "$INSTALL_DIR/$binary_name"
+    chmod +x "$INSTALL_DIR/$binary_name"
+fi
 
 if [[ "$no_modify_path" != "true" ]] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     current_shell=$(basename "${SHELL:-sh}")
