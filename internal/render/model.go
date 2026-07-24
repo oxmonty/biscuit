@@ -26,10 +26,12 @@ type repoModel struct {
 	SpecPath    string
 	SpecSHA     string
 
-	Homebrew  bool
-	TapOwner  string // owner of the homebrew-tap repo casks publish into
-	RepoOwner string // GitHub owner derived from Module, "OWNER" if undetermined
-	RepoName  string // GitHub repo name derived from Module, Binary+"-cli" if undetermined
+	Homebrew      bool
+	InstallScript bool
+	NPMPackage    string // npm package name upgrade.go targets; Binary+"-cli" unless overridden
+	TapOwner      string // owner of the homebrew-tap repo casks publish into
+	RepoOwner     string // GitHub owner derived from Module, "OWNER" if undetermined
+	RepoName      string // GitHub repo name derived from Module, Binary+"-cli" if undetermined
 
 	Resources    []*resourceView // top-level resource nodes
 	AllResources []*resourceView // every node, depth-first — one output file each
@@ -132,25 +134,36 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	}
 	tagline := firstLine(description)
 
+	npmPackage := cfg.Distribution.NPM.Package
+	if npmPackage == "" {
+		npmPackage = binary + "-cli"
+	}
+
 	owner, repo := repoOwnerName(module, binary)
 	m := &repoModel{
-		Binary:      binary,
-		Module:      module,
-		Title:       api.Title,
-		Description: description,
-		Tagline:     tagline,
-		MakeTagline: makeShellEscape(tagline),
-		APIVersion:  api.APIVersion,
-		BaseURL:     baseURL,
-		SpecPath:    prov.SpecPath,
-		SpecSHA:     prov.SpecSHA256,
-		Homebrew:    cfg.Distribution.Homebrew,
-		TapOwner:    owner,
-		RepoOwner:   owner,
-		RepoName:    repo,
+		Binary:        binary,
+		Module:        module,
+		Title:         api.Title,
+		Description:   description,
+		Tagline:       tagline,
+		MakeTagline:   makeShellEscape(tagline),
+		APIVersion:    api.APIVersion,
+		BaseURL:       baseURL,
+		SpecPath:      prov.SpecPath,
+		SpecSHA:       prov.SpecSHA256,
+		Homebrew:      cfg.Distribution.Homebrew,
+		InstallScript: cfg.Distribution.InstallScript,
+		NPMPackage:    npmPackage,
+		TapOwner:      owner,
+		RepoOwner:     owner,
+		RepoName:      repo,
 	}
 
 	idents := identSet{}
+	// pkg/cmd/upgrade.go always declares newUpgradeCmd; claiming it here
+	// forces a spec operation that would derive the same Ident to Upgrade2
+	// instead of colliding with the generated file.
+	idents.claim("Upgrade")
 	aliases := reservedAliases()
 	for i := range api.Commands {
 		m.Resources = append(m.Resources, m.buildResource(&api.Commands[i], nil, "pkg/cmd", idents, aliases, identSet{}))

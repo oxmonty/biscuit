@@ -57,11 +57,12 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 	}
 
 	type unit struct {
-		tmpl     string
-		path     string
-		data     any
-		goSource bool
-		emitOnce bool
+		tmpl       string
+		path       string
+		data       any
+		goSource   bool
+		emitOnce   bool
+		executable bool
 	}
 	units := []unit{
 		{tmpl: "go.mod.tmpl", path: "go.mod", data: m},
@@ -76,9 +77,12 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 		{tmpl: "factory.go.tmpl", path: "internal/factory/factory.go", data: m, goSource: true},
 		{tmpl: "custom.go.tmpl", path: "internal/custom/custom.go", data: m, goSource: true, emitOnce: true},
 		{tmpl: "root.go.tmpl", path: "pkg/cmd/root.go", data: m, goSource: true},
+		{tmpl: "upgrade.go.tmpl", path: "pkg/cmd/upgrade.go", data: m, goSource: true},
 		{tmpl: "gendocs.go.tmpl", path: "scripts/gendocs/main.go", data: m, goSource: true},
 		{tmpl: "readme.md.tmpl", path: "README.md", data: m},
 		{tmpl: "makefile.tmpl", path: "Makefile", data: m},
+		{tmpl: "setup.md.tmpl", path: "SETUP.md", data: m},
+		{tmpl: "setup-publishing-skill.md.tmpl", path: ".claude/skills/setup-publishing/SKILL.md", data: m},
 		{tmpl: "goreleaser.yml.tmpl", path: ".goreleaser.yaml", data: m},
 		{tmpl: "workflows-ci.yaml.tmpl", path: ".github/workflows/ci.yaml", data: m},
 		{tmpl: "workflows-release.yaml.tmpl", path: ".github/workflows/release.yaml", data: m},
@@ -86,6 +90,9 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 		// emitOnce: release-please's bot owns the manifest after the first
 		// release — regeneration must never reset it to 0.0.0
 		{tmpl: "release-please-manifest.json.tmpl", path: ".release-please-manifest.json", data: m, emitOnce: true},
+	}
+	if m.InstallScript {
+		units = append(units, unit{tmpl: "install.sh.tmpl", path: "install.sh", data: m, executable: true})
 	}
 	for _, r := range m.AllResources {
 		units = append(units, unit{
@@ -114,7 +121,7 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 				return nil, fmt.Errorf("formatting %s: %w", u.path, err)
 			}
 		}
-		files = append(files, File{Path: u.path, Contents: contents, EmitOnce: u.emitOnce})
+		files = append(files, File{Path: u.path, Contents: contents, EmitOnce: u.emitOnce, Executable: u.executable})
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })

@@ -1,6 +1,12 @@
 package render
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/oxmonty/biscuit/internal/config"
+	"github.com/oxmonty/biscuit/internal/ir"
+)
 
 func TestGoExported(t *testing.T) {
 	// given/then: punctuation splits, never leaks into the identifier
@@ -56,6 +62,34 @@ func TestAliasNameNeverKeyword(t *testing.T) {
 	// given: a resource chain that lowers to a Go keyword
 	if got := aliasName([]string{"type"}); got != "typex" {
 		t.Errorf("aliasName(type) = %q, want typex", got)
+	}
+}
+
+func TestRootUpgradeVerbRenamedOnCollision(t *testing.T) {
+	// given: a spec whose only operation is a root-level "upgrade" verb —
+	// its derived Ident would otherwise collide with pkg/cmd/upgrade.go's
+	// own newUpgradeCmd
+	api := &ir.API{
+		Title:     "Test API",
+		RootVerbs: []ir.Verb{{Name: "upgrade", Method: "GET", Path: "/upgrade"}},
+	}
+	cfg := &config.Config{Output: config.Output{Module: "example.com/test-cli"}}
+
+	// then: buildModel claims "Upgrade" for the generated file first, so the
+	// spec verb is deterministically renamed to avoid the clash
+	m := buildModel(api, cfg, Provenance{})
+	if len(m.RootVerbs) != 1 || m.RootVerbs[0].Ident != "Upgrade2" {
+		t.Fatalf("root verb Ident = %+v, want Upgrade2", m.RootVerbs)
+	}
+
+	// then: the plan still renders without error — no duplicate newUpgradeCmd
+	files, err := Render(api, cfg, Provenance{})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	root := string(findFile(t, files, "pkg/cmd/root.go").Contents)
+	if want := "new" + m.RootVerbs[0].Ident + "Cmd"; !strings.Contains(root, want) {
+		t.Errorf("root.go missing renamed constructor call %q:\n%s", want, root)
 	}
 }
 

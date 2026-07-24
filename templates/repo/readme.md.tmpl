@@ -15,6 +15,14 @@ brew install {{.TapOwner}}/tap/{{.Binary}}-cli
 
 Installing with the fully-qualified form (`brew install {{.TapOwner}}/tap/{{.Binary}}-cli`) skips the trust prompt.
 
+{{end -}}
+{{if .InstallScript -}}
+```sh
+curl -fsSL https://raw.githubusercontent.com/{{.RepoOwner}}/{{.RepoName}}/main/install.sh | sh
+```
+
+{{end -}}
+{{if or .Homebrew .InstallScript -}}
 From source:
 
 {{end -}}

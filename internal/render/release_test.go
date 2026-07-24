@@ -81,6 +81,79 @@ func TestRenderReleaseFiles(t *testing.T) {
 	}
 }
 
+func TestRenderUpgradeCommand(t *testing.T) {
+	// given: petstore rendered with a github.com module path
+	doc, err := spec.Load(ladder + "petstore.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	api := mapping.Map(doc, nil)
+	cfg := &config.Config{Output: config.Output{Module: "github.com/acme/petstore-cli"}}
+	files, err := Render(api, cfg, Provenance{SpecPath: "petstore.yaml", SpecSHA256: "test"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// then: pkg/cmd/upgrade.go is always in the plan, and carries the
+	// channel-detection logic and repo path parameterized off the module
+	upgrade := string(findFile(t, files, "pkg/cmd/upgrade.go").Contents)
+	for _, want := range []string{
+		"Caskroom",
+		"checksums.txt",
+		`"acme/petstore-cli"`,
+		`"swagger-petstore-cli"`,
+	} {
+		if !strings.Contains(upgrade, want) {
+			t.Errorf("pkg/cmd/upgrade.go missing %q:\n%s", want, upgrade)
+		}
+	}
+}
+
+func TestRenderInstallScriptGating(t *testing.T) {
+	// given: petstore rendered with install_script enabled
+	doc, err := spec.Load(ladder + "petstore.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	api := mapping.Map(doc, nil)
+	cfg := &config.Config{
+		Output:       config.Output{Module: "github.com/acme/petstore-cli"},
+		Distribution: config.Distribution{InstallScript: true},
+	}
+	files, err := Render(api, cfg, Provenance{SpecPath: "petstore.yaml", SpecSHA256: "test"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// then: install.sh is in the plan, executable, parameterized, and the
+	// README documents it
+	install := findFile(t, files, "install.sh")
+	if !install.Executable {
+		t.Error("install.sh must be executable")
+	}
+	if !strings.Contains(string(install.Contents), `REPO="acme/petstore-cli"`) {
+		t.Errorf("install.sh missing parameterized REPO:\n%s", install.Contents)
+	}
+	readme := string(findFile(t, files, "README.md").Contents)
+	if !strings.Contains(readme, "install.sh | sh") {
+		t.Errorf("README.md missing install script section:\n%s", readme)
+	}
+
+	// when: rendering the same spec with install_script left disabled
+	cfgDisabled := &config.Config{Output: config.Output{Module: "github.com/acme/petstore-cli"}}
+	filesDisabled, err := Render(api, cfgDisabled, Provenance{SpecPath: "petstore.yaml", SpecSHA256: "test"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// then: install.sh is absent from the plan
+	for _, f := range filesDisabled {
+		if f.Path == "install.sh" {
+			t.Error("install.sh present with InstallScript=false")
+		}
+	}
+}
+
 func TestRenderOmitsHomebrewCasksWhenDisabled(t *testing.T) {
 	// given: the same spec rendered with Distribution.Homebrew left false
 	doc, err := spec.Load(ladder + "petstore.yaml")
