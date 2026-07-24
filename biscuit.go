@@ -7,11 +7,12 @@ package biscuit
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/mapping"
+	"github.com/oxmonty/biscuit/internal/render"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
@@ -56,33 +57,34 @@ func (d *Document) Diagnostics() []string { return d.doc.Diagnostics }
 
 // FilePlan is the complete set of files a generation run would write.
 type FilePlan struct {
-	Files []PlannedFile // sorted by Path; empty until the rendering epic lands
+	Files []PlannedFile // sorted by Path
 }
 
-type PlannedFile struct {
-	Path     string // relative to the output dir, slash-separated
-	Contents []byte
-}
+// PlannedFile is one file in the plan. EmitOnce marks files written when
+// absent and never overwritten (internal/custom/).
+type PlannedFile = render.File
 
-// Generate derives the command surface from a loaded spec and plans the
-// output repository. Pure: nothing is written until FilePlan.Write. The
-// rendering epic fills Files; today the run derives and validates the
-// command tree (overrides included) and returns an empty plan.
+// WriteResult reports what a Write actually touched: regeneration rewrites
+// only files still carrying the generated-file marker, so user-owned files
+// surface as skips instead of being clobbered.
+type WriteResult = render.WriteResult
+
+// Generate derives the command surface from a loaded spec and renders the
+// complete output repository. Pure: nothing is written until FilePlan.Write.
 func Generate(_ context.Context, doc *Document, cfg *Config) (*FilePlan, error) {
-	mapping.Map(doc.doc, mapping.OverridesFromConfig(cfg))
-	return &FilePlan{}, nil
+	api := mapping.Map(doc.doc, mapping.OverridesFromConfig(cfg))
+	sum := sha256.Sum256(doc.doc.Bytes)
+	files, err := render.Render(api, cfg, render.Provenance{
+		SpecPath:   doc.doc.Path,
+		SpecSHA256: hex.EncodeToString(sum[:]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &FilePlan{Files: files}, nil
 }
 
 // Write materializes the plan under dir, creating directories as needed.
-func (p *FilePlan) Write(dir string) error {
-	for _, f := range p.Files {
-		target := filepath.Join(dir, filepath.FromSlash(f.Path))
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(target, f.Contents, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
+func (p *FilePlan) Write(dir string) (*WriteResult, error) {
+	return render.WriteFiles(dir, p.Files)
 }

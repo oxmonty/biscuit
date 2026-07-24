@@ -1,10 +1,13 @@
 package biscuit
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/oxmonty/biscuit/internal/render"
 )
 
 func TestGenerateIsPureAndWriteIsSeparate(t *testing.T) {
@@ -17,20 +20,38 @@ func TestGenerateIsPureAndWriteIsSeparate(t *testing.T) {
 		"listPets": {Name: "ls"},
 	}}
 
-	// when: generating and writing the plan
+	// when: generating twice and writing the plan once
 	plan, err := Generate(context.Background(), doc, cfg)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
+	again, err := Generate(context.Background(), doc, cfg)
+	if err != nil {
+		t.Fatalf("Generate again: %v", err)
+	}
 	dir := t.TempDir()
-	if err := plan.Write(dir); err != nil {
+	res, err := plan.Write(dir)
+	if err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
-	// then: the plan writes exactly its files — none yet, so an empty dir
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != len(plan.Files) {
-		t.Errorf("wrote %d entries for %d planned files", len(entries), len(plan.Files))
+	// then: the plan is non-empty, byte-deterministic, and fully written
+	if len(plan.Files) == 0 {
+		t.Fatal("empty file plan")
+	}
+	if len(again.Files) != len(plan.Files) {
+		t.Fatalf("second Generate planned %d files, first %d", len(again.Files), len(plan.Files))
+	}
+	for i := range plan.Files {
+		if plan.Files[i].Path != again.Files[i].Path || !bytes.Equal(plan.Files[i].Contents, again.Files[i].Contents) {
+			t.Errorf("nondeterministic output at %s", plan.Files[i].Path)
+		}
+	}
+	if len(res.Written) != len(plan.Files) {
+		t.Errorf("wrote %d of %d planned files", len(res.Written), len(plan.Files))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		t.Errorf("go.mod not written: %v", err)
 	}
 }
 
@@ -40,7 +61,7 @@ func TestFilePlanWriteCreatesDirectories(t *testing.T) {
 	dir := t.TempDir()
 
 	// when: writing it
-	if err := plan.Write(dir); err != nil {
+	if _, err := plan.Write(dir); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -48,5 +69,71 @@ func TestFilePlanWriteCreatesDirectories(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, "cmd", "app", "main.go"))
 	if err != nil || string(data) != "package main\n" {
 		t.Errorf("read = %q, %v", data, err)
+	}
+}
+
+func TestRegenerationSafety(t *testing.T) {
+	// given: a written petstore plan with a user-edited custom file and a
+	// generated file whose marker the user stripped (taking ownership)
+	doc, err := Load("testdata/specs/petstore.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	plan, err := Generate(context.Background(), doc, &Config{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	dir := t.TempDir()
+	if _, err := plan.Write(dir); err != nil {
+		t.Fatalf("first Write: %v", err)
+	}
+	customPath := filepath.Join(dir, "internal", "custom", "custom.go")
+	if err := os.WriteFile(customPath, []byte("package custom // mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ownedPath := filepath.Join(dir, "internal", "iostreams", "iostreams.go")
+	if err := os.WriteFile(ownedPath, []byte("package iostreams // marker stripped\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// when: regenerating over the same directory
+	res, err := plan.Write(dir)
+	if err != nil {
+		t.Fatalf("second Write: %v", err)
+	}
+
+	// then: custom/ and the marker-stripped file survive byte-for-byte
+	if got, _ := os.ReadFile(customPath); string(got) != "package custom // mine\n" {
+		t.Errorf("custom file overwritten: %q", got)
+	}
+	if got, _ := os.ReadFile(ownedPath); string(got) != "package iostreams // marker stripped\n" {
+		t.Errorf("user-owned file overwritten: %q", got)
+	}
+	if len(res.SkippedCustom) != 1 || len(res.SkippedUnmarked) != 1 {
+		t.Errorf("skips = custom %v, unmarked %v", res.SkippedCustom, res.SkippedUnmarked)
+	}
+}
+
+func TestEveryGeneratedFileCarriesTheMarker(t *testing.T) {
+	// given: a generated petstore plan
+	doc, err := Load("testdata/specs/petstore.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	plan, err := Generate(context.Background(), doc, &Config{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	// then: every file carries the marker except emit-once files (user-owned
+	// after first emission) and go.sum (no comment syntax)
+	for _, f := range plan.Files {
+		marked := bytes.Contains(f.Contents, []byte(render.Marker))
+		switch {
+		case f.EmitOnce && marked:
+			t.Errorf("%s: emit-once file must not claim DO NOT EDIT", f.Path)
+		case !f.EmitOnce && f.Path != "go.sum" && !marked:
+			t.Errorf("%s: missing generated-file marker", f.Path)
+		}
 	}
 }

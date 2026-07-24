@@ -22,8 +22,17 @@ const FileName = "biscuit.yaml"
 type Config struct {
 	Version    int                  `yaml:"version,omitempty"`
 	Spec       Spec                 `yaml:"spec,omitempty"`
+	Output     Output               `yaml:"output,omitempty"`
 	Lint       Lint                 `yaml:"lint,omitempty"`
 	Operations map[string]Operation `yaml:"operations,omitempty"`
+}
+
+// Output shapes the emitted repository. Every field has a spec-derived
+// default; the config only pins what the derivation gets wrong.
+type Output struct {
+	Binary string `yaml:"binary,omitempty"` // command name; default derived from info.title
+	Module string `yaml:"module,omitempty"` // Go module path; default example.com/{binary}-cli
+	Dir    string `yaml:"dir,omitempty"`    // output directory; default ./{binary}-cli
 }
 
 type Spec struct {
