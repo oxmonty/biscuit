@@ -102,15 +102,21 @@ func TestRegenerationSafety(t *testing.T) {
 		t.Fatalf("second Write: %v", err)
 	}
 
-	// then: custom/ and the marker-stripped file survive byte-for-byte
+	// then: custom/ and the marker-stripped file survive byte-for-byte, and
+	// the release-please manifest (bot-owned after the first release) is
+	// emit-once too
 	if got, _ := os.ReadFile(customPath); string(got) != "package custom // mine\n" {
 		t.Errorf("custom file overwritten: %q", got)
 	}
 	if got, _ := os.ReadFile(ownedPath); string(got) != "package iostreams // marker stripped\n" {
 		t.Errorf("user-owned file overwritten: %q", got)
 	}
-	if len(res.SkippedCustom) != 1 || len(res.SkippedUnmarked) != 1 {
-		t.Errorf("skips = custom %v, unmarked %v", res.SkippedCustom, res.SkippedUnmarked)
+	wantOnce := []string{".release-please-manifest.json", "internal/custom/custom.go"}
+	if len(res.SkippedCustom) != len(wantOnce) || res.SkippedCustom[0] != wantOnce[0] || res.SkippedCustom[1] != wantOnce[1] {
+		t.Errorf("emit-once skips = %v, want %v", res.SkippedCustom, wantOnce)
+	}
+	if len(res.SkippedUnmarked) != 1 {
+		t.Errorf("unmarked skips = %v", res.SkippedUnmarked)
 	}
 }
 
@@ -126,13 +132,19 @@ func TestEveryGeneratedFileCarriesTheMarker(t *testing.T) {
 	}
 
 	// then: every file carries the marker except emit-once files (user-owned
-	// after first emission) and go.sum (no comment syntax)
+	// after first emission) and files with no comment syntax to carry it
+	// (go.sum, and JSON has none at all)
+	noMarkerSyntax := map[string]bool{
+		"go.sum":                        true,
+		"release-please-config.json":    true,
+		".release-please-manifest.json": true,
+	}
 	for _, f := range plan.Files {
 		marked := bytes.Contains(f.Contents, []byte(render.Marker))
 		switch {
 		case f.EmitOnce && marked:
 			t.Errorf("%s: emit-once file must not claim DO NOT EDIT", f.Path)
-		case !f.EmitOnce && f.Path != "go.sum" && !marked:
+		case !f.EmitOnce && !noMarkerSyntax[f.Path] && !marked:
 			t.Errorf("%s: missing generated-file marker", f.Path)
 		}
 	}

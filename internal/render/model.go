@@ -23,6 +23,11 @@ type repoModel struct {
 	SpecPath    string
 	SpecSHA     string
 
+	Homebrew  bool
+	TapOwner  string // owner of the homebrew-tap repo casks publish into
+	RepoOwner string // GitHub owner derived from Module, "OWNER" if undetermined
+	RepoName  string // GitHub repo name derived from Module, Binary+"-cli" if undetermined
+
 	Resources    []*resourceView // top-level resource nodes
 	AllResources []*resourceView // every node, depth-first — one output file each
 	RootVerbs    []*verbView
@@ -89,6 +94,19 @@ func OutputDir(api *ir.API, cfg *config.Config) string {
 	return binary + "-cli"
 }
 
+// repoOwnerName derives the GitHub owner/repo the release templates publish
+// to from a module path like "github.com/acme/foo-cli" -> ("acme", "foo-cli").
+// Modules hosted elsewhere get a placeholder the templates flag for editing.
+func repoOwnerName(module, binary string) (owner, repo string) {
+	const githubPrefix = "github.com/"
+	if rest, ok := strings.CutPrefix(module, githubPrefix); ok {
+		if o, r, ok := strings.Cut(rest, "/"); ok && o != "" && r != "" {
+			return o, r
+		}
+	}
+	return "OWNER", binary + "-cli"
+}
+
 func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	binary := cfg.Output.Binary
 	if binary == "" {
@@ -105,6 +123,7 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		baseURL = api.Servers[0].URL
 	}
 
+	owner, repo := repoOwnerName(module, binary)
 	m := &repoModel{
 		Binary:      binary,
 		Module:      module,
@@ -114,6 +133,10 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		BaseURL:     baseURL,
 		SpecPath:    prov.SpecPath,
 		SpecSHA:     prov.SpecSHA256,
+		Homebrew:    cfg.Distribution.Homebrew,
+		TapOwner:    owner,
+		RepoOwner:   owner,
+		RepoName:    repo,
 	}
 
 	idents := identSet{}

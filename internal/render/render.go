@@ -46,6 +46,11 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 
 	tpl, err := template.New("repo").Funcs(template.FuncMap{
 		"q": strconv.Quote,
+		// ob/cb emit literal "{{"/"}}" so release templates can carry
+		// goreleaser's own {{.Version}} and GitHub Actions' ${{ }} syntax
+		// without biscuit's renderer trying to evaluate them as actions.
+		"ob": func() string { return "{{" },
+		"cb": func() string { return "}}" },
 	}).ParseFS(templates.FS, "repo/*.tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
@@ -71,12 +76,19 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 		{tmpl: "factory.go.tmpl", path: "internal/factory/factory.go", data: m, goSource: true},
 		{tmpl: "custom.go.tmpl", path: "internal/custom/custom.go", data: m, goSource: true, emitOnce: true},
 		{tmpl: "root.go.tmpl", path: "pkg/cmd/root.go", data: m, goSource: true},
+		{tmpl: "goreleaser.yml.tmpl", path: ".goreleaser.yaml", data: m},
+		{tmpl: "workflows-ci.yaml.tmpl", path: ".github/workflows/ci.yaml", data: m},
+		{tmpl: "workflows-release.yaml.tmpl", path: ".github/workflows/release.yaml", data: m},
+		{tmpl: "release-please-config.json.tmpl", path: "release-please-config.json", data: m},
+		// emitOnce: release-please's bot owns the manifest after the first
+		// release — regeneration must never reset it to 0.0.0
+		{tmpl: "release-please-manifest.json.tmpl", path: ".release-please-manifest.json", data: m, emitOnce: true},
 	}
 	for _, r := range m.AllResources {
 		units = append(units, unit{
-			tmpl:     "resource.go.tmpl",
-			path:     r.Dir + "/" + r.PkgName + ".go",
-			data:     struct {
+			tmpl: "resource.go.tmpl",
+			path: r.Dir + "/" + r.PkgName + ".go",
+			data: struct {
 				*repoModel
 				Res *resourceView
 			}{m, r},
