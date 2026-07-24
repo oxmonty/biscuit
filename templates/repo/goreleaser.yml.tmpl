@@ -2,6 +2,10 @@
 version: 2
 project_name: {{.Binary}}
 
+before:
+  hooks:
+    - go run ./scripts/gendocs --dir dist/docsgen
+
 builds:
   - main: ./cmd/{{.Binary}}
     binary: {{.Binary}}
@@ -29,6 +33,17 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - license*
+      - readme*
+      - changelog*
+      - src: dist/docsgen/man/*
+        dst: man
+      - src: dist/docsgen/completions/*
+        dst: completions
 
 checksum:
   name_template: checksums.txt
@@ -54,6 +69,19 @@ homebrew_casks:
       token: "{{ob}} .Env.HOMEBREW_TAP_TOKEN {{cb}}"
     directory: Casks
     binaries: [{{.Binary}}] # cask is named {{.Binary}}-cli; the archive's binary is not
+    # every listed page must exist in dist/docsgen/man — one per top-level command
+    manpages:
+      - man/{{.Binary}}.1
+{{- range .Resources}}
+      - man/{{$.Binary}}-{{.Name}}.1
+{{- end}}
+{{- range .RootVerbs}}
+      - man/{{$.Binary}}-{{.Use}}.1
+{{- end}}
+    completions:
+      bash: completions/{{.Binary}}.bash
+      zsh: completions/_{{.Binary}}
+      fish: completions/{{.Binary}}.fish
     caveats: |
       Installed command: {{.Binary}}   (stable channel)
 
@@ -79,6 +107,18 @@ homebrew_casks:
       token: "{{ob}} .Env.HOMEBREW_TAP_TOKEN {{cb}}"
     directory: Casks
     binaries: [{{.Binary}}]
+    manpages:
+      - man/{{.Binary}}.1
+{{- range .Resources}}
+      - man/{{$.Binary}}-{{.Name}}.1
+{{- end}}
+{{- range .RootVerbs}}
+      - man/{{$.Binary}}-{{.Use}}.1
+{{- end}}
+    completions:
+      bash: completions/{{.Binary}}.bash
+      zsh: completions/_{{.Binary}}
+      fish: completions/{{.Binary}}.fish
     caveats: |
       Installed command: {{.Binary}}   (prerelease channel — alpha/beta/rc builds)
 

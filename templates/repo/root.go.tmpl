@@ -31,6 +31,7 @@ func NewRootCmd(version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          {{q .Binary}},
 		Short:        {{q .Title}},
+		Long:         {{q .Long}},
 		Version:      version,
 		SilenceUsage: true,
 	}

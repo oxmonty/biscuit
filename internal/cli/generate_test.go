@@ -29,7 +29,7 @@ func TestGenerateDryRunPrintsTreeAndPlan(t *testing.T) {
 	}
 
 	// then: the tree, the counts header, and the full file plan print
-	for _, want := range []string{"3 operations", "pets", "list", "show", "file plan: 18 files", "pkg/cmd/root.go", "emitted once"} {
+	for _, want := range []string{"3 operations", "pets", "list", "show", "file plan: 21 files", "pkg/cmd/root.go", "emitted once"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}

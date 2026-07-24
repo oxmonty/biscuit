@@ -31,9 +31,10 @@ type Config struct {
 // Output shapes the emitted repository. Every field has a spec-derived
 // default; the config only pins what the derivation gets wrong.
 type Output struct {
-	Binary string `yaml:"binary,omitempty"` // command name; default derived from info.title
-	Module string `yaml:"module,omitempty"` // Go module path; default example.com/{binary}-cli
-	Dir    string `yaml:"dir,omitempty"`    // output directory; default ./{binary}-cli
+	Binary      string `yaml:"binary,omitempty"`      // command name; default derived from info.title
+	Module      string `yaml:"module,omitempty"`      // Go module path; default example.com/{binary}-cli
+	Dir         string `yaml:"dir,omitempty"`         // output directory; default ./{binary}-cli
+	Description string `yaml:"description,omitempty"` // overrides info.description in the generated README/Makefile/root.Long
 }
 
 type Spec struct {

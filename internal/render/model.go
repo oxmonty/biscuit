@@ -17,7 +17,10 @@ type repoModel struct {
 	Binary      string
 	Module      string
 	Title       string
-	Description string
+	Description string // full spec/config description; README's body paragraph
+	Tagline     string // first line of Description; Makefile header and root.Long share this
+	MakeTagline string // Tagline escaped for a single-quoted Makefile recipe argument
+	Long        string // root.Long: Tagline + quickstart + docs link
 	APIVersion  string
 	BaseURL     string
 	SpecPath    string
@@ -123,12 +126,20 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		baseURL = api.Servers[0].URL
 	}
 
+	description := cfg.Output.Description
+	if description == "" {
+		description = api.Description
+	}
+	tagline := firstLine(description)
+
 	owner, repo := repoOwnerName(module, binary)
 	m := &repoModel{
 		Binary:      binary,
 		Module:      module,
 		Title:       api.Title,
-		Description: api.Description,
+		Description: description,
+		Tagline:     tagline,
+		MakeTagline: makeShellEscape(tagline),
 		APIVersion:  api.APIVersion,
 		BaseURL:     baseURL,
 		SpecPath:    prov.SpecPath,
@@ -148,7 +159,25 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		v := m.buildVerb(&api.RootVerbs[i], nil, idents)
 		m.RootVerbs = append(m.RootVerbs, v)
 	}
+	m.Long = m.buildLong()
 	return m
+}
+
+// buildLong composes root.Long: the same Tagline the Makefile shows, then a
+// short quickstart, then a docs link once the module resolves to a real
+// GitHub repo. Plain text — cobra prints it above Usage on help, --help, -h,
+// and bare invocation alike.
+func (m *repoModel) buildLong() string {
+	var b strings.Builder
+	if m.Tagline != "" {
+		b.WriteString(m.Tagline)
+		b.WriteString("\n\n")
+	}
+	fmt.Fprintf(&b, "Quickstart:\n  %s %s\n  %s --help\n", m.Binary, m.ExampleUse(), m.Binary)
+	if m.RepoOwner != "OWNER" {
+		fmt.Fprintf(&b, "\nDocs: https://github.com/%s/%s", m.RepoOwner, m.RepoName)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (m *repoModel) buildResource(c *ir.Command, chain []string, parentDir string, idents, aliases, siblingDirs identSet) *resourceView {
@@ -296,4 +325,44 @@ func firstLine(s string) string {
 		s = s[:i]
 	}
 	return strings.TrimSpace(s)
+}
+
+// makeShellEscape prepares s for embedding as a single-quoted argument inside
+// a Makefile recipe line. Make expands "$" of its own before the shell ever
+// sees the line, so "$" must be doubled to survive as one literal "$"; each
+// "'" would otherwise close the shell quote early, so it's closed, escaped,
+// and reopened.
+func makeShellEscape(s string) string {
+	s = strings.ReplaceAll(s, "$", "$$")
+	s = strings.ReplaceAll(s, "'", `'\''`)
+	return s
+}
+
+// ExampleUse returns a concrete example command line for the README and the
+// root.Long quickstart: the first top-level resource's first verb (walking
+// into children when a resource only groups sub-resources), else the first
+// root verb, else a bare --help. Deterministic — Resources/RootVerbs are
+// already sorted at mapping time.
+func (m *repoModel) ExampleUse() string {
+	for _, r := range m.Resources {
+		if use, ok := r.exampleUse(); ok {
+			return use
+		}
+	}
+	if len(m.RootVerbs) > 0 {
+		return m.RootVerbs[0].Use
+	}
+	return "--help"
+}
+
+func (r *resourceView) exampleUse() (string, bool) {
+	if len(r.Verbs) > 0 {
+		return r.Name + " " + r.Verbs[0].Use, true
+	}
+	for _, c := range r.Children {
+		if use, ok := c.exampleUse(); ok {
+			return r.Name + " " + use, true
+		}
+	}
+	return "", false
 }
