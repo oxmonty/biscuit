@@ -1,6 +1,10 @@
 version: 2
 project_name: biscuit
 
+before:
+  hooks:
+    - go run ./scripts/gendocs --dir dist/docsgen
+
 builds:
   - main: ./cmd/biscuit
     binary: biscuit
@@ -30,6 +34,19 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    # explicit files: replaces goreleaser's default list, so the usual
+    # LICENSE/README/CHANGELOG globs are repeated alongside the generated docs
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - license*
+      - readme*
+      - changelog*
+      - src: dist/docsgen/man/*
+        dst: man
+      - src: dist/docsgen/completions/*
+        dst: completions
 
 checksum:
   name_template: checksums.txt
@@ -53,6 +70,18 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     binaries: [biscuit] # cask is named biscuit-cli; the archive's binary is not
+    # keep in sync with the commands biscuit ships (see internal/cli/gendocs_test.go)
+    manpages:
+      - man/biscuit.1
+      - man/biscuit-doctor.1
+      - man/biscuit-generate.1
+      - man/biscuit-init.1
+      - man/biscuit-upgrade.1
+      - man/biscuit-version.1
+    completions:
+      bash: completions/biscuit.bash
+      zsh: completions/_biscuit
+      fish: completions/biscuit.fish
     caveats: |
       Installed command: biscuit   (stable channel)
 
@@ -77,6 +106,18 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     binaries: [biscuit]
+    # keep in sync with the commands biscuit ships (see internal/cli/gendocs_test.go)
+    manpages:
+      - man/biscuit.1
+      - man/biscuit-doctor.1
+      - man/biscuit-generate.1
+      - man/biscuit-init.1
+      - man/biscuit-upgrade.1
+      - man/biscuit-version.1
+    completions:
+      bash: completions/biscuit.bash
+      zsh: completions/_biscuit
+      fish: completions/biscuit.fish
     caveats: |
       Installed command: biscuit   (prerelease channel — alpha/beta/rc builds)
 
