@@ -197,6 +197,10 @@ func runUpgrade(cmd *cobra.Command, opts *upgradeOptions) error {
 			}
 			return opts.execCommand(out, errOut, "brew", "install", "--cask", brewTapPrefix+target)
 		}
+		// ponytail: graduation (newest stable overtakes newest prerelease →
+		// swap @next to the stable cask, announced) isn't implemented; the
+		// @next cask tracking every release absorbs stable bumps silently.
+		// Implement the announced swap when the first stable release nears.
 		return opts.execCommand(out, errOut, "brew", "upgrade", "--cask", target)
 
 	case installNPM:

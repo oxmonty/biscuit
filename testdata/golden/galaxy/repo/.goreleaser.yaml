@@ -68,14 +68,27 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     binaries: [galaxy] # cask is named galaxy-cli; the archive's binary is not
-    # every listed page must exist in dist/docsgen/man — one per top-level command
+    # every page GenManTree emits, nested commands included — a partial list
+    # would leave `man galaxy-<sub>-<verb>` unresolvable after install
     manpages:
-      - man/galaxy.1
+      - man/galaxy-auth-token-create.1
+      - man/galaxy-auth-token.1
       - man/galaxy-auth.1
+      - man/galaxy-celestial-bodies-create.1
       - man/galaxy-celestial-bodies.1
+      - man/galaxy-me-list.1
       - man/galaxy-me.1
+      - man/galaxy-planets-create.1
+      - man/galaxy-planets-delete.1
+      - man/galaxy-planets-get-all-data.1
+      - man/galaxy-planets-get.1
+      - man/galaxy-planets-image.1
+      - man/galaxy-planets-update.1
       - man/galaxy-planets.1
+      - man/galaxy-user-signup-create.1
+      - man/galaxy-user-signup.1
       - man/galaxy-user.1
+      - man/galaxy.1
     completions:
       bash: completions/galaxy.bash
       zsh: completions/_galaxy
@@ -105,12 +118,24 @@ homebrew_casks:
     directory: Casks
     binaries: [galaxy]
     manpages:
-      - man/galaxy.1
+      - man/galaxy-auth-token-create.1
+      - man/galaxy-auth-token.1
       - man/galaxy-auth.1
+      - man/galaxy-celestial-bodies-create.1
       - man/galaxy-celestial-bodies.1
+      - man/galaxy-me-list.1
       - man/galaxy-me.1
+      - man/galaxy-planets-create.1
+      - man/galaxy-planets-delete.1
+      - man/galaxy-planets-get-all-data.1
+      - man/galaxy-planets-get.1
+      - man/galaxy-planets-image.1
+      - man/galaxy-planets-update.1
       - man/galaxy-planets.1
+      - man/galaxy-user-signup-create.1
+      - man/galaxy-user-signup.1
       - man/galaxy-user.1
+      - man/galaxy.1
     completions:
       bash: completions/galaxy.bash
       zsh: completions/_galaxy

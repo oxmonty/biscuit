@@ -189,15 +189,12 @@ func TestGoreleaserManpagesMatchTopLevelCommands(t *testing.T) {
 	cask, _ := casks[0].(map[string]any)
 	got, _ := cask["manpages"].([]any)
 
-	// then: it's exactly root + one page per top-level resource/root verb —
-	// every page cobra's GenManTree actually emits for a root command built
-	// without ever calling Execute() (no auto-added completion command yet)
-	want := []string{"man/" + m.Binary + ".1"}
-	for _, r := range m.Resources {
-		want = append(want, "man/"+m.Binary+"-"+r.Name+".1")
-	}
-	for _, v := range m.RootVerbs {
-		want = append(want, "man/"+m.Binary+"-"+v.Use+".1")
+	// then: it's the sorted model.ManPages set — root plus every nested
+	// resource and verb page GenManTree emits, so no page a user can name
+	// via `man` is missing from the cask
+	want := make([]string, len(m.ManPages))
+	for i, p := range m.ManPages {
+		want[i] = "man/" + p
 	}
 	if len(got) != len(want) {
 		t.Fatalf("manpages = %v, want %v", got, want)

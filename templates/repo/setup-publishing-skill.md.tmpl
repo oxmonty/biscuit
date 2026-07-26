@@ -30,8 +30,8 @@ Derive every name from the repo instead of assuming:
 
 - `.goreleaser.yml` → cask name, tap `repository.owner`/`name`, token env var name,
   binary name.
-- `npm/*/package.json` → the shim package name; the platform-package scope/prefix is in
-  `scripts/publish_npm.mjs` (or the npm publish script this repo uses).
+- `npm/*/package.json` → the shim package name, if this repo distributes via npm
+  (biscuit templates the npm pipeline in a later release; skip npm steps until then).
 - `.github/workflows/` → the release workflow **filename** (trusted publishing matches
   it exactly, extension included).
 - `git remote get-url origin` → GitHub org and repo.
@@ -84,7 +84,7 @@ first npm publish is local; Homebrew needs no bootstrap.
    ```sh
    git fetch --tags && git checkout <tag>
    goreleaser release --clean --skip=publish,announce   # or: go run github.com/goreleaser/goreleaser/v2@latest ...
-   node scripts/publish_npm.mjs <version>
+   npm publish   # only once this repo distributes via npm; skip otherwise
    git checkout -
    ```
 3. Note: npm auto-points `latest` at a package's very first publish even for

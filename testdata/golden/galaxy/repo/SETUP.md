@@ -31,13 +31,16 @@ blocks this by default on new orgs and repos.
 
 ## 3. npm (only if you distribute via npm)
 
+This repo does not ship an npm publish pipeline yet — biscuit templates one
+in a later release. These steps apply once you add npm distribution.
+
 - [ ] Enable 2FA on the publishing npm account — publishes fail with a hard
       403 without it.
 - [ ] A brand-new npm package can't use OIDC trusted publishing on its first
       publish. Bootstrap it once locally:
       ```sh
       npm login
-      node scripts/publish_npm.mjs <version>
+      npm publish   # or your publish script, once one exists
       ```
 - [ ] Then configure a trusted publisher for each package at
       `https://www.npmjs.com/package/<name>/settings`: publisher "GitHub

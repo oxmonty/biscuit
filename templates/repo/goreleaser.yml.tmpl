@@ -69,14 +69,11 @@ homebrew_casks:
       token: "{{ob}} .Env.HOMEBREW_TAP_TOKEN {{cb}}"
     directory: Casks
     binaries: [{{.Binary}}] # cask is named {{.Binary}}-cli; the archive's binary is not
-    # every listed page must exist in dist/docsgen/man — one per top-level command
+    # every page GenManTree emits, nested commands included — a partial list
+    # would leave `man {{.Binary}}-<sub>-<verb>` unresolvable after install
     manpages:
-      - man/{{.Binary}}.1
-{{- range .Resources}}
-      - man/{{$.Binary}}-{{.Name}}.1
-{{- end}}
-{{- range .RootVerbs}}
-      - man/{{$.Binary}}-{{.Use}}.1
+{{- range .ManPages}}
+      - man/{{.}}
 {{- end}}
     completions:
       bash: completions/{{.Binary}}.bash
@@ -108,12 +105,8 @@ homebrew_casks:
     directory: Casks
     binaries: [{{.Binary}}]
     manpages:
-      - man/{{.Binary}}.1
-{{- range .Resources}}
-      - man/{{$.Binary}}-{{.Name}}.1
-{{- end}}
-{{- range .RootVerbs}}
-      - man/{{$.Binary}}-{{.Use}}.1
+{{- range .ManPages}}
+      - man/{{.}}
 {{- end}}
     completions:
       bash: completions/{{.Binary}}.bash

@@ -315,12 +315,12 @@ func normJoin(segs []string) string {
 	return strings.Join(norm, "/")
 }
 
-// kebab lowercases and hyphenates snake_case, camelCase, and acronym runs
-// (HTTPProxy → http-proxy).
 // Kebab exposes the tree's kebab-casing to render, so derived names (binary
 // from title) case identically to command names.
 func Kebab(s string) string { return kebab(s) }
 
+// kebab lowercases and hyphenates snake_case, camelCase, and acronym runs
+// (HTTPProxy → http-proxy).
 func kebab(s string) string {
 	var out []rune
 	runes := []rune(s)

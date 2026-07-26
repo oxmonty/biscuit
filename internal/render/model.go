@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/oxmonty/biscuit/internal/config"
@@ -37,6 +38,12 @@ type repoModel struct {
 	AllResources []*resourceView // every node, depth-first — one output file each
 	RootVerbs    []*verbView
 	Ops          []*verbView // every verb incl. root verbs, in Ident-claim order
+
+	// ManPages lists every page cobra's GenManTree emits for the generated
+	// tree ({binary}-{chain}-{verb}.1), sorted — the cask manpage stanzas
+	// must name each page individually, and a partial list would leave
+	// nested commands unresolvable via man after brew install.
+	ManPages []string
 }
 
 type resourceView struct {
@@ -172,6 +179,8 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		v := m.buildVerb(&api.RootVerbs[i], nil, idents)
 		m.RootVerbs = append(m.RootVerbs, v)
 	}
+	m.ManPages = append(m.ManPages, m.Binary+".1")
+	sort.Strings(m.ManPages)
 	m.Long = m.buildLong()
 	return m
 }
@@ -208,6 +217,7 @@ func (m *repoModel) buildResource(c *ir.Command, chain []string, parentDir strin
 	r.ImportPath = m.Module + "/" + r.Dir
 	r.ImportAlias = aliases.claim(aliasName(chain))
 	m.AllResources = append(m.AllResources, r)
+	m.ManPages = append(m.ManPages, m.Binary+"-"+strings.Join(chain, "-")+".1")
 
 	for i := range c.Verbs {
 		r.Verbs = append(r.Verbs, m.buildVerb(&c.Verbs[i], chain, idents))
@@ -220,6 +230,7 @@ func (m *repoModel) buildResource(c *ir.Command, chain []string, parentDir strin
 }
 
 func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verbView {
+	m.ManPages = append(m.ManPages, m.Binary+"-"+strings.Join(append(append([]string(nil), chain...), v.Name), "-")+".1")
 	vv := &verbView{
 		Use:        v.Name,
 		Short:      firstLine(v.Summary),

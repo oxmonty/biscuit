@@ -68,10 +68,14 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     binaries: [petstore] # cask is named petstore-cli; the archive's binary is not
-    # every listed page must exist in dist/docsgen/man — one per top-level command
+    # every page GenManTree emits, nested commands included — a partial list
+    # would leave `man petstore-<sub>-<verb>` unresolvable after install
     manpages:
-      - man/petstore.1
+      - man/petstore-pets-create.1
+      - man/petstore-pets-list.1
+      - man/petstore-pets-show.1
       - man/petstore-pets.1
+      - man/petstore.1
     completions:
       bash: completions/petstore.bash
       zsh: completions/_petstore
@@ -101,8 +105,11 @@ homebrew_casks:
     directory: Casks
     binaries: [petstore]
     manpages:
-      - man/petstore.1
+      - man/petstore-pets-create.1
+      - man/petstore-pets-list.1
+      - man/petstore-pets-show.1
       - man/petstore-pets.1
+      - man/petstore.1
     completions:
       bash: completions/petstore.bash
       zsh: completions/_petstore
