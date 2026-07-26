@@ -36,6 +36,12 @@ Derive every name from the repo instead of assuming:
   it exactly, extension included).
 - `git remote get-url origin` → GitHub org and repo.
 
+If there is no origin remote yet, the repo has never been pushed: confirm owner and
+visibility with AskUserQuestion, then create it yourself —
+`git init -b main` (if not yet a git repo), commit the generated files, and
+`gh repo create <owner>/<repo> --source=. --push`. Everything after this step assumes
+the repo exists on GitHub.
+
 ## Step 1 — GitHub org allows Actions to create PRs
 
 release-please opens release PRs from a workflow; new orgs block this by default.

@@ -6,6 +6,15 @@ goreleaser publishing a GitHub Release and a Homebrew cask).
 If you're using Claude Code, `.claude/skills/setup-publishing/SKILL.md` walks
 through the same steps interactively; this is the checklist by hand.
 
+## 0. Put the repo on GitHub
+
+Skip if this repo already has a GitHub remote.
+
+- [ ] ```sh
+      git init -b main && git add -A && git commit -m "chore: initial generated repo"
+      gh repo create oxmonty/petstore-cli --source=. --push
+      ```
+
 ## 1. Let release-please open PRs
 
 release-please proposes releases from a workflow-created pull request; GitHub
