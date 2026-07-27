@@ -120,6 +120,46 @@ func TestRegenerationSafety(t *testing.T) {
 	}
 }
 
+func TestMachineOwnedFilesAlwaysOverwrite(t *testing.T) {
+	// given: a written plan whose go.sum (no comment syntax, so no marker)
+	// was modified on disk
+	doc, err := Load("testdata/specs/petstore.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	plan, err := Generate(context.Background(), doc, &Config{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	dir := t.TempDir()
+	if _, err := plan.Write(dir); err != nil {
+		t.Fatalf("first Write: %v", err)
+	}
+	sumPath := filepath.Join(dir, "go.sum")
+	if err := os.WriteFile(sumPath, []byte("stale entries\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// when: regenerating
+	if _, err := plan.Write(dir); err != nil {
+		t.Fatalf("second Write: %v", err)
+	}
+
+	// then: go.sum is machine-owned — both sides unmarked — so it is
+	// restored, never treated as user-owned
+	got, err := os.ReadFile(sumPath)
+	if err != nil || string(got) == "stale entries\n" {
+		t.Errorf("go.sum not restored on regeneration: %q, %v", firstBytes(got), err)
+	}
+}
+
+func firstBytes(b []byte) string {
+	if len(b) > 40 {
+		b = b[:40]
+	}
+	return string(b)
+}
+
 func TestEveryGeneratedFileCarriesTheMarker(t *testing.T) {
 	// given: a generated petstore plan
 	doc, err := Load("testdata/specs/petstore.yaml")

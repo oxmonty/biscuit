@@ -200,6 +200,43 @@ func TestBareUpgradeRejectsTamperedArchive(t *testing.T) {
 	}
 }
 
+func TestBareUpgradeAlreadyNewest(t *testing.T) {
+	// given: a bare install already at the newest release on its channel
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/oxmonty/biscuit/releases" {
+			_, _ = io.WriteString(w, `[{"tag_name":"v1.0.0-alpha.5"}]`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "biscuit")
+	if err := os.WriteFile(exe, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// when: upgrading
+	opts := &upgradeOptions{
+		exePath: func() (string, error) { return exe, nil },
+		apiBase: srv.URL, dlBase: srv.URL,
+		currentVersion: "1.0.0-alpha.5", goos: "darwin",
+	}
+	out, _, err := runUpgradeWith(t, opts, "")
+
+	// then: it reports up to date and the binary is untouched
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	if !strings.Contains(out, "already the newest") {
+		t.Errorf("no up-to-date message: %q", out)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "current" {
+		t.Errorf("binary replaced on no-op upgrade: %q", got)
+	}
+}
+
 func TestStableChannelWithNoStableRelease(t *testing.T) {
 	// given: /releases/latest 404s (no stable release yet)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -220,15 +220,15 @@ func CreateChatCompletionRaw(ctx context.Context, baseURL string, body []byte) (
 }
 `
 
-// TestCompileBigSpecs generates the large ladder specs into a scratch dir,
-// builds them, and throws the result away — full compile coverage with no
+// TestCompileBigSpecs generates every non-golden ladder spec into a scratch
+// dir, builds it, and throws the result away — full compile coverage with no
 // committed bytes. The openai run also carries a custom fixture, so the
 // custom/ contract gate covers the hardest spec.
 func TestCompileBigSpecs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compile gate skipped in -short")
 	}
-	for _, name := range []string{"openai.yaml", "stripe.yaml"} {
+	for _, name := range []string{"museum.yaml", "train-travel.yaml", "pokeapi.yml", "openai.yaml", "stripe.yaml"} {
 		t.Run(name, func(t *testing.T) {
 			files := renderSpec(t, "../../testdata/specs/"+name, &config.Config{})
 			dir := t.TempDir()
