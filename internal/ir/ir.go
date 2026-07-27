@@ -50,6 +50,7 @@ type Verb struct {
 type Flag struct {
 	Name        string   // kebab-case; dots mirror body nesting (--address.city)
 	In          string   // path | query | header | body
+	Param       string   // path/query/header only: the original wire name (petId, not pet-id)
 	BodyPath    []string // body only: original property names from the body root
 	Type        string   // string | integer | number | boolean | json
 	Description string

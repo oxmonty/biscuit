@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"strings"
@@ -11,11 +13,12 @@ import (
 	"github.com/oxmonty/biscuit/internal/ir"
 	"github.com/oxmonty/biscuit/internal/lint"
 	"github.com/oxmonty/biscuit/internal/mapping"
+	"github.com/oxmonty/biscuit/internal/render"
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
 func newGenerateCommand() *cobra.Command {
-	var specPath string
+	var specPath, outDir string
 	var dryRun, showFlags, quiet, strict bool
 
 	cmd := &cobra.Command{
@@ -51,16 +54,42 @@ func newGenerateCommand() *cobra.Command {
 				return &qualityGateError{fmt.Sprintf("grade %d below lint.min_grade %d", report.Grade, cfg.Lint.MinGrade)}
 			}
 
-			if !dryRun {
-				return &usageError{fmt.Errorf("repository rendering ships with the next milestone; preview the command surface with --dry-run")}
+			api := mapping.Map(doc, mapping.OverridesFromConfig(cfg))
+			sum := sha256.Sum256(doc.Bytes)
+			files, err := render.Render(api, cfg, render.Provenance{
+				SpecPath:   doc.Path,
+				SpecSHA256: hex.EncodeToString(sum[:]),
+			})
+			if err != nil {
+				return err
 			}
 
-			api := mapping.Map(doc, mapping.OverridesFromConfig(cfg))
-			printDryRun(cmd.OutOrStdout(), api, showFlags)
+			if dryRun {
+				printDryRun(cmd.OutOrStdout(), api, files, showFlags)
+				return nil
+			}
+
+			dir := outDir
+			if dir == "" {
+				dir = render.OutputDir(api, cfg)
+			}
+			res, err := render.WriteFiles(dir, files)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "wrote %d files to %s\n", len(res.Written), dir)
+			for _, p := range res.SkippedCustom {
+				_, _ = fmt.Fprintf(out, "kept %s (yours, never regenerated)\n", p)
+			}
+			for _, p := range res.SkippedUnmarked {
+				_, _ = fmt.Fprintf(out, "kept %s (no generated-file marker; user-owned)\n", p)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&specPath, "spec", "", "path to the OpenAPI spec (default: discover it)")
+	cmd.Flags().StringVar(&outDir, "out", "", "output directory (default: output.dir or ./{binary}-cli)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the derived command surface and file plan without writing")
 	cmd.Flags().BoolVar(&showFlags, "flags", false, "with --dry-run: list every derived flag")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress the advisory-findings summary")
@@ -68,7 +97,7 @@ func newGenerateCommand() *cobra.Command {
 	return cmd
 }
 
-func printDryRun(out io.Writer, api *ir.API, showFlags bool) {
+func printDryRun(out io.Writer, api *ir.API, files []render.File, showFlags bool) {
 	resources, verbs := countTree(api.Commands)
 	verbs += len(api.RootVerbs)
 	title := api.Title
@@ -89,7 +118,14 @@ func printDryRun(out io.Writer, api *ir.API, showFlags bool) {
 			_, _ = fmt.Fprintf(out, "  - %s\n", d)
 		}
 	}
-	_, _ = fmt.Fprintln(out, "\nfile plan: 0 files (repository rendering ships with the next milestone)")
+	_, _ = fmt.Fprintf(out, "\nfile plan: %d files\n", len(files))
+	for _, f := range files {
+		note := ""
+		if f.EmitOnce {
+			note = "  (emitted once, never overwritten)"
+		}
+		_, _ = fmt.Fprintf(out, "  %s%s\n", f.Path, note)
+	}
 }
 
 func printCommands(out io.Writer, cmds []ir.Command, indent string, showFlags bool) {

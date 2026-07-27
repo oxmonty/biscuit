@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,8 +28,8 @@ func TestGenerateDryRunPrintsTreeAndPlan(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	// then: the tree, the counts header, and the empty file plan print
-	for _, want := range []string{"3 operations", "pets", "list", "show", "file plan: 0 files"} {
+	// then: the tree, the counts header, and the full file plan print
+	for _, want := range []string{"3 operations", "pets", "list", "show", "file plan: 24 files", "pkg/cmd/root.go", "emitted once"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -52,13 +53,29 @@ func TestGenerateDryRunShowsFlags(t *testing.T) {
 	}
 }
 
-func TestGenerateWithoutDryRunIsUsageError(t *testing.T) {
-	// given: generate without --dry-run before rendering exists
-	_, _, err := runGenerate(t, "--spec", ladder+"petstore.yaml")
+func TestGenerateWritesTheRepo(t *testing.T) {
+	// given: a spec path and an output directory
+	spec, err := filepath.Abs(ladder + "petstore.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
 
-	// then: a usage error points at --dry-run
-	if err == nil || ExitCode(err) != ExitUsage {
-		t.Errorf("err = %v (exit %d), want usage", err, ExitCode(err))
+	// when: generating for real (no --dry-run)
+	stdout, _, err := runGenerate(t, "--spec", spec, "--out", "petstore-cli", "--quiet")
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	// then: the repo lands on disk and the summary counts it
+	if !strings.Contains(stdout, "wrote") {
+		t.Errorf("no write summary:\n%s", stdout)
+	}
+	for _, p := range []string{"go.mod", "pkg/cmd/root.go", "internal/custom/custom.go"} {
+		if _, err := os.Stat(filepath.Join("petstore-cli", p)); err != nil {
+			t.Errorf("%s not written: %v", p, err)
+		}
 	}
 }
 

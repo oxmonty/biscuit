@@ -1,0 +1,122 @@
+{{define "verbcmd"}}
+func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   {{q .Use}},
+		Short: {{q .Short}},
+		Args:  cobra.NoArgs,
+{{- if .Aliases}}
+		Aliases: []string{ {{- range $i, $a := .Aliases}}{{if $i}}, {{end}}{{q $a}}{{end}} },
+{{- end}}
+{{- if .Deprecated}}
+		Deprecated: "deprecated in the API spec",
+{{- end}}
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cl, err := f.Client()
+			if err != nil {
+				return err
+			}
+			req := &client.{{.Ident}}Request{}
+{{- range .PathFlags}}
+			{
+				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
+				req.{{.Field}} = {{.WireExpr}}
+			}
+{{- end}}
+{{- if .QueryFlags}}
+			req.Query = url.Values{}
+{{- end}}
+{{- range .QueryFlags}}
+			if cmd.Flags().Changed({{q .Name}}) {
+{{- if .Repeated}}
+				vs, _ := cmd.Flags().GetStringArray({{q .Name}})
+				for _, v := range vs {
+					req.Query.Add({{q .Wire}}, v)
+				}
+{{- else}}
+				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
+				req.Query.Set({{q .Wire}}, {{.WireExpr}})
+{{- end}}
+			}
+{{- end}}
+{{- if .HeadFlags}}
+			req.Header = http.Header{}
+{{- end}}
+{{- range .HeadFlags}}
+			if cmd.Flags().Changed({{q .Name}}) {
+{{- if .Repeated}}
+				vs, _ := cmd.Flags().GetStringArray({{q .Name}})
+				for _, v := range vs {
+					req.Header.Add({{q .Wire}}, v)
+				}
+{{- else}}
+				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
+				req.Header.Set({{q .Wire}}, {{.WireExpr}})
+{{- end}}
+			}
+{{- end}}
+{{- if .BodyFlags}}
+			body := map[string]any{}
+{{- range .BodyFlags}}
+			if cmd.Flags().Changed({{q .Name}}) {
+{{- if .Repeated}}
+				vs, _ := cmd.Flags().GetStringArray({{q .Name}})
+				items := make([]any, 0, len(vs))
+				for _, s := range vs {
+					jv, err := cmdutil.Coerce(s, {{q .Type}})
+					if err != nil {
+						return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+					}
+					items = append(items, jv)
+				}
+				cmdutil.SetPath(body, {{.BodyPathLit}}, items)
+{{- else if eq .Type "json"}}
+				v, _ := cmd.Flags().GetString({{q .Name}})
+				jv, err := cmdutil.Coerce(v, "json")
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				cmdutil.SetPath(body, {{.BodyPathLit}}, jv)
+{{- else}}
+				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
+				cmdutil.SetPath(body, {{.BodyPathLit}}, v)
+{{- end}}
+			}
+{{- end}}
+			if len(body) > 0 {
+				b, err := json.Marshal(body)
+				if err != nil {
+					return err
+				}
+				req.Body = b
+			}
+{{- end}}
+{{- with .WholeBody}}
+			if cmd.Flags().Changed({{q .Name}}) {
+				v, _ := cmd.Flags().GetString({{q .Name}})
+				jv, err := cmdutil.Coerce(v, "json")
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				b, err := json.Marshal(jv)
+				if err != nil {
+					return err
+				}
+				req.Body = b
+			}
+{{- end}}
+			resp, err := cl.{{.Ident}}(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			return cmdutil.PrintResponse(f.IOStreams, resp)
+		},
+	}
+{{- range .Flags}}
+	cmd.Flags().{{.RegCall}}({{q .Name}}, {{.DefLit}}, {{q .Description}})
+{{- if .Required}}
+	_ = cmd.MarkFlagRequired({{q .Name}})
+{{- end}}
+{{- end}}
+	return cmd
+}
+{{end}}

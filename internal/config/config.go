@@ -20,10 +20,21 @@ import (
 const FileName = "biscuit.yaml"
 
 type Config struct {
-	Version    int                  `yaml:"version,omitempty"`
-	Spec       Spec                 `yaml:"spec,omitempty"`
-	Lint       Lint                 `yaml:"lint,omitempty"`
-	Operations map[string]Operation `yaml:"operations,omitempty"`
+	Version      int                  `yaml:"version,omitempty"`
+	Spec         Spec                 `yaml:"spec,omitempty"`
+	Output       Output               `yaml:"output,omitempty"`
+	Lint         Lint                 `yaml:"lint,omitempty"`
+	Distribution Distribution         `yaml:"distribution,omitempty"`
+	Operations   map[string]Operation `yaml:"operations,omitempty"`
+}
+
+// Output shapes the emitted repository. Every field has a spec-derived
+// default; the config only pins what the derivation gets wrong.
+type Output struct {
+	Binary      string `yaml:"binary,omitempty"`      // command name; default derived from info.title
+	Module      string `yaml:"module,omitempty"`      // Go module path; default example.com/{binary}-cli
+	Dir         string `yaml:"dir,omitempty"`         // output directory; default ./{binary}-cli
+	Description string `yaml:"description,omitempty"` // overrides info.description in the generated README/Makefile/root.Long
 }
 
 type Spec struct {
@@ -32,6 +43,19 @@ type Spec struct {
 
 type Lint struct {
 	MinGrade int `yaml:"min_grade,omitempty"`
+}
+
+// Distribution controls which release channels the generated repo ships
+// with. Only Homebrew gates template output today; NPM and InstallScript are
+// read by later stories (npm publishing, install.sh templating).
+type Distribution struct {
+	Homebrew      bool `yaml:"homebrew,omitempty"`
+	InstallScript bool `yaml:"install_script,omitempty"`
+	NPM           NPM  `yaml:"npm,omitempty"`
+}
+
+type NPM struct {
+	Package string `yaml:"package,omitempty"`
 }
 
 // Operation overrides how one operation maps into the command tree, keyed by

@@ -54,6 +54,7 @@ func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
 		f := ir.Flag{
 			Name:        kebab(p.Name),
 			In:          p.In,
+			Param:       p.Name,
 			Description: p.Description,
 			Required:    p.Required || p.In == "path",
 		}
