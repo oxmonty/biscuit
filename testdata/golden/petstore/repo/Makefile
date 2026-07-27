@@ -37,8 +37,8 @@ lint: ## Run golangci-lint (same linter as CI)
 check: build vet test ## Build, vet, and test (add 'lint' for full CI parity)
 
 ## Docs:
-docs: ## Generate man pages and shell completions into dist/docsgen
-	go run ./scripts/gendocs --dir dist/docsgen
+docs: ## Generate man pages and shell completions into docsgen
+	go run ./scripts/gendocs --dir docsgen
 
 ## Release:
 snapshot: ## Build a local goreleaser snapshot (no publish, no tag)

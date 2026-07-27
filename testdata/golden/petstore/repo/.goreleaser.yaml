@@ -4,7 +4,9 @@ project_name: petstore
 
 before:
   hooks:
-    - go run ./scripts/gendocs --dir dist/docsgen
+    # docsgen lives outside dist/: goreleaser re-checks dist is empty AFTER
+    # before-hooks run, so a hook writing into dist/ fails the release
+    - go run ./scripts/gendocs --dir docsgen
 
 builds:
   - main: ./cmd/petstore
@@ -40,9 +42,9 @@ archives:
       - license*
       - readme*
       - changelog*
-      - src: dist/docsgen/man/*
+      - src: docsgen/man/*
         dst: man
-      - src: dist/docsgen/completions/*
+      - src: docsgen/completions/*
         dst: completions
 
 checksum:
