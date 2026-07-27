@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.7](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.6...v0.1.0-alpha.7) (2026-07-27)
+
+
+### Bug Fixes
+
+* **release:** write gendocs output outside dist ([f6680a8](https://github.com/oxmonty/biscuit/commit/f6680a882db405784d5f124ae39ff895c443d1c5))
+
 ## [0.1.0-alpha.6](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.5...v0.1.0-alpha.6) (2026-07-27)
 
 
