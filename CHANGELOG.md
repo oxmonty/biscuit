@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.0-alpha.6](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.5...v0.1.0-alpha.6) (2026-07-27)
+
+
+### Features
+
+* **cli:** add channel-aware upgrade with update alias ([66d5449](https://github.com/oxmonty/biscuit/commit/66d5449b0dcd7a621fae219d5141d14204c1cfd0))
+* E4 repo scaffolding — biscuit generate emits a complete repo ([48f3fc5](https://github.com/oxmonty/biscuit/commit/48f3fc521ce44e4b13d1272fd3a31fcbfc36aad3))
+* **install:** verify checksums and fail clearly on bad versions ([3fa6bd9](https://github.com/oxmonty/biscuit/commit/3fa6bd9623cb0190881ac49b533bf1d8748ba27e))
+* **release:** bundle man pages and shell completions into archives and casks ([b11c3d3](https://github.com/oxmonty/biscuit/commit/b11c3d3cf1477fd6baf3e03cd1fa5badb32787d5))
+* **render:** emit the complete generated repo from the template tree ([34808f6](https://github.com/oxmonty/biscuit/commit/34808f6c586980ab9e1a5f15b5a6cebdbfab5c76))
+* **render:** generate README, Makefile, docs bundling, and quickstart help ([0423f60](https://github.com/oxmonty/biscuit/commit/0423f604a85bd409e8c2c3dc02855081c715e179))
+* **render:** SETUP.md and publishing skill create the GitHub repo ([84745fb](https://github.com/oxmonty/biscuit/commit/84745fb7a98278ad3d0ad1de1fd6bdc81405978f))
+* **render:** template release mechanics into generated repos ([6e2e554](https://github.com/oxmonty/biscuit/commit/6e2e55404adb8bc0a6adc655c2aa0919c9c5c2d8))
+* **render:** template upgrade, install.sh, SETUP.md, and publishing skill ([096cbdd](https://github.com/oxmonty/biscuit/commit/096cbddcaef54c6a7b1f4183d8b17e9fe0a377eb))
+
+
+### Bug Fixes
+
+* **render:** review fixes — cask man pages, npm wording, doc comments ([4890031](https://github.com/oxmonty/biscuit/commit/48900316cede8f115460a9d55a00e57e58140b7e))
+
 ## [0.1.0-alpha.5](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.4...v0.1.0-alpha.5) (2026-07-19)
 
 
