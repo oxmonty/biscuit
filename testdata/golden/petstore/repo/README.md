@@ -38,6 +38,16 @@ petstore pets create
 - `--output/-o <path>` — write the response body to a file instead of stdout. `-o auto` derives a filename from the response (Content-Disposition, else the URL) and won't clobber an existing file; `-o -` forces stdout.
 - `--include-headers` — print the response status and headers before the body.
 
+## File arguments
+
+A body flag (including `--body`) starting with `@` reads from a file instead of taking the value literally: `@path` and `@file://path` read `path`, sniffing it as text (kept as-is) or binary (base64-encoded, since JSON has no raw-byte type). `@data://literal` passes `literal` through unchanged with no file read — useful when a real value happens to start with `@`. A leading `\@` also escapes to a literal `@`. Operations that take a file upload (`multipart/form-data`) send the file's raw bytes as its own part instead.
+
+```sh
+petstore ... --body @request.json
+petstore ... --body @file:///abs/path/request.json
+petstore ... --some-field @data://@not-a-file
+```
+
 ## Exit codes
 
 | Code | Meaning |

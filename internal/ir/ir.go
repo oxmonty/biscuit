@@ -42,6 +42,7 @@ type Verb struct {
 	Aliases     []string              // kebab-case, from overrides
 	Pagination  string                // pagination hint, from overrides
 	Flags       []Flag                // sorted by Name
+	Multipart   bool                  // request body content type is multipart/form-data: BodyFlags become file/text parts, not a JSON object
 	Security    []SecurityRequirement // OR-list of alternatives; empty means no auth requirement
 }
 
@@ -54,6 +55,7 @@ type Flag struct {
 	Param       string   // path/query/header only: the original wire name (petId, not pet-id)
 	BodyPath    []string // body only: original property names from the body root
 	Type        string   // string | integer | number | boolean | json
+	Format      string   // schema format (e.g. "binary", "date-time"); string-typed flags only
 	Description string
 	Required    bool
 	Repeated    bool     // array, passed as a repeated flag

@@ -5,6 +5,7 @@ package pets
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -45,11 +46,19 @@ func newPetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("name") {
 				v, _ := cmd.Flags().GetString("name")
-				cmdutil.SetPath(body, []string{"name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "name", err)
+				}
+				cmdutil.SetPath(body, []string{"name"}, ev)
 			}
 			if cmd.Flags().Changed("tag") {
 				v, _ := cmd.Flags().GetString("tag")
-				cmdutil.SetPath(body, []string{"tag"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "tag", err)
+				}
+				cmdutil.SetPath(body, []string{"tag"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)

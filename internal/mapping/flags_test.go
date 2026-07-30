@@ -252,6 +252,41 @@ func TestFlagsScalarBodyIsSingleBodyFlag(t *testing.T) {
 	}
 }
 
+func TestFlagsMultipartFormatBinary(t *testing.T) {
+	// given: galaxy's uploadImage operation, a multipart/form-data body with
+	// a single format:binary property
+	api := mustMap(t, ladder+"galaxy.yaml")
+	var verb *ir.Verb
+	var walk func([]ir.Command)
+	walk = func(cmds []ir.Command) {
+		for _, c := range cmds {
+			for i := range c.Verbs {
+				if c.Verbs[i].OperationID == "uploadImage" {
+					verb = &c.Verbs[i]
+				}
+			}
+			walk(c.Children)
+		}
+	}
+	walk(api.Commands)
+	if verb == nil {
+		t.Fatal("uploadImage not found")
+	}
+
+	// then: the verb is flagged multipart, and its file property keeps its
+	// binary format so the execution layer sends it as a file part
+	if !verb.Multipart {
+		t.Error("uploadImage.Multipart = false, want true")
+	}
+	byName := map[string]ir.Flag{}
+	for _, f := range verb.Flags {
+		byName[f.Name] = f
+	}
+	if f := byName["image"]; f.Type != "string" || f.Format != "binary" {
+		t.Errorf("image = %+v, want string flag with format binary", f)
+	}
+}
+
 func TestFlagsLadderSmoke(t *testing.T) {
 	// given: openai's chat completions create operation
 	api := mustMap(t, ladder+"openai.yaml")

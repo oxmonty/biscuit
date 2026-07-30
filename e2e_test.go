@@ -1,8 +1,10 @@
 package biscuit
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,9 +32,10 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 		t.Fatalf("building biscuit: %v\n%s", err, out)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"method": r.Method, "path": r.URL.Path, "query": r.URL.RawQuery,
+			"method": r.Method, "path": r.URL.Path, "query": r.URL.RawQuery, "body": string(body),
 		})
 	}))
 	defer srv.Close()
@@ -67,7 +70,7 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pets list: %v\n%s", err, out)
 	}
-	var echoed struct{ Method, Path, Query string }
+	var echoed struct{ Method, Path, Query, Body string }
 	if err := json.Unmarshal(out, &echoed); err != nil {
 		t.Fatalf("stdout is not the relayed response body: %q", out)
 	}
@@ -161,6 +164,63 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 	if !strings.Contains(string(out), "Quickstart:") {
 		t.Errorf("bare invocation missing quickstart:\n%s", out)
 	}
+
+	// then: @<tmpfile> on a string body flag reads the file and lands its
+	// content verbatim as the wire value — the flagship @file use
+	tmpfile := filepath.Join(work, "name.txt")
+	if err := os.WriteFile(tmpfile, []byte(`{"nested":"value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	atFile := exec.Command(cliBin, "pets", "create", "--id", "1", "--name", "@"+tmpfile, "--base-url", srv.URL)
+	out, err = atFile.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets create --name @file: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout not JSON: %q", out)
+	}
+	if name := wireName(t, echoed.Body); name != `{"nested":"value"}` {
+		t.Errorf("wire name = %q, want file content verbatim", name)
+	}
+
+	// then: a leading \@ escapes to a literal @, never read as a file
+	escaped := exec.Command(cliBin, "pets", "create", "--id", "1", "--name", `\@literal`, "--base-url", srv.URL)
+	out, err = escaped.CombinedOutput()
+	if err != nil {
+		t.Fatalf(`pets create --name \@literal: %v\n%s`, err, out)
+	}
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout not JSON: %q", out)
+	}
+	if name := wireName(t, echoed.Body); name != "@literal" {
+		t.Errorf(`wire name = %q, want "@literal"`, name)
+	}
+
+	// then: @data:// forces a literal with no file read, even when the
+	// literal itself starts with @
+	dataLit := exec.Command(cliBin, "pets", "create", "--id", "1", "--name", "@data://@weird", "--base-url", srv.URL)
+	out, err = dataLit.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets create --name @data://@weird: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout not JSON: %q", out)
+	}
+	if name := wireName(t, echoed.Body); name != "@weird" {
+		t.Errorf(`wire name = %q, want "@weird"`, name)
+	}
+}
+
+// wireName decodes body (the raw JSON request body the echo server relayed
+// back as a string) and returns its "name" field, sidestepping the double
+// JSON-escaping a raw string comparison would otherwise require.
+func wireName(t *testing.T, body string) string {
+	t.Helper()
+	var v struct{ Name string }
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		t.Fatalf("wire body not JSON: %q", body)
+	}
+	return v.Name
 }
 
 // TestEndToEndGalaxyAuth pins the auth story end to end: galaxy.yaml is the
@@ -182,8 +242,30 @@ func TestEndToEndGalaxyAuth(t *testing.T) {
 		t.Fatalf("building biscuit: %v\n%s", err, out)
 	}
 	var requests int
+	var uploadedBytes []byte
+	var uploadedContentType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			// then (parsed server-side, not trusting the client's own
+			// claims): the multipart body carries the file's raw bytes and
+			// a sniffed per-part Content-Type, not a JSON-encoded string
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			file, header, err := r.FormFile("image")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer func() { _ = file.Close() }()
+			uploadedBytes, _ = io.ReadAll(file)
+			uploadedContentType = header.Header.Get("Content-Type")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "ok"})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"method": r.Method, "path": r.URL.Path, "authorization": r.Header.Get("Authorization"),
@@ -251,6 +333,27 @@ func TestEndToEndGalaxyAuth(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Errorf("requests reaching the server = %d, want still 1 (no network I/O on missing auth)", requests)
+	}
+
+	// then: uploadImage's format:binary property rides a real multipart/
+	// form-data body — the file's exact bytes and a sniffed image/png
+	// Content-Type on the wire, not a base64 JSON string
+	imgPath := filepath.Join(work, "photo.png")
+	imgBytes := []byte("\x89PNG\r\n\x1a\nnot a real PNG, but starts with the magic bytes")
+	if err := os.WriteFile(imgPath, imgBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	upload := exec.Command(cliBin, "planets", "image", "--planet-id", "1", "--image", "@"+imgPath, "--base-url", srv.URL)
+	upload.Env = append(os.Environ(), "SCALAR_GALAXY_BEARER_AUTH=tok123")
+	out, err = upload.CombinedOutput()
+	if err != nil {
+		t.Fatalf("planets image: %v\n%s", err, out)
+	}
+	if !bytes.Equal(uploadedBytes, imgBytes) {
+		t.Errorf("uploaded multipart bytes = %q, want %q", uploadedBytes, imgBytes)
+	}
+	if uploadedContentType != "image/png" {
+		t.Errorf("uploaded multipart Content-Type = %q, want image/png", uploadedContentType)
 	}
 }
 

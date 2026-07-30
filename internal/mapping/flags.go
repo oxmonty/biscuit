@@ -79,20 +79,38 @@ func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
 // jsonBodySchema picks the flag-bearing request media type: JSON-ish first,
 // multipart/form-urlencoded otherwise (their fields flatten the same way).
 func jsonBodySchema(op *ir.Operation) *ir.Schema {
+	s, _ := pickBodyMediaType(op)
+	return s
+}
+
+// pickBodyMediaType is jsonBodySchema's selection logic, also returning the
+// chosen media type string — operationIsMultipart uses it to tell a real
+// multipart/form-data body (raw per-part bytes) from the x-www-form-urlencoded
+// fallback, which still flattens through the JSON body path today.
+func pickBodyMediaType(op *ir.Operation) (schema *ir.Schema, contentType string) {
 	var fallback *ir.Schema
+	var fallbackType string
 	for _, mt := range op.RequestBody {
 		switch {
 		case strings.Contains(mt.Type, "json"):
 			if mt.Schema != nil {
-				return mt.Schema
+				return mt.Schema, mt.Type
 			}
 		case strings.HasPrefix(mt.Type, "multipart/") || mt.Type == "application/x-www-form-urlencoded":
 			if fallback == nil {
-				fallback = mt.Schema
+				fallback, fallbackType = mt.Schema, mt.Type
 			}
 		}
 	}
-	return fallback
+	return fallback, fallbackType
+}
+
+// operationIsMultipart reports whether op's request body flattens from a
+// real multipart/form-data media type, so the execution layer builds a
+// multipart body instead of JSON-encoding format:binary fields as text.
+func operationIsMultipart(op *ir.Operation) bool {
+	_, ct := pickBodyMediaType(op)
+	return strings.HasPrefix(ct, "multipart/")
 }
 
 type flattener struct {
@@ -249,7 +267,10 @@ func (fl *flattener) fill(f *ir.Flag, s *ir.Schema) {
 		return
 	}
 	switch s.Type {
-	case "string", "boolean", "integer", "number":
+	case "string":
+		f.Type = s.Type
+		f.Format = s.Format
+	case "boolean", "integer", "number":
 		f.Type = s.Type
 	case "array":
 		f.Repeated = true

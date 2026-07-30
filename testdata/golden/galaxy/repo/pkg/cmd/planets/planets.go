@@ -6,6 +6,7 @@ package planets
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 
@@ -61,19 +62,35 @@ func newPlanetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("creator.name") {
 				v, _ := cmd.Flags().GetString("creator.name")
-				cmdutil.SetPath(body, []string{"creator", "name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "creator.name", err)
+				}
+				cmdutil.SetPath(body, []string{"creator", "name"}, ev)
 			}
 			if cmd.Flags().Changed("description") {
 				v, _ := cmd.Flags().GetString("description")
-				cmdutil.SetPath(body, []string{"description"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "description", err)
+				}
+				cmdutil.SetPath(body, []string{"description"}, ev)
 			}
 			if cmd.Flags().Changed("discovered-at") {
 				v, _ := cmd.Flags().GetString("discovered-at")
-				cmdutil.SetPath(body, []string{"discoveredAt"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "discovered-at", err)
+				}
+				cmdutil.SetPath(body, []string{"discoveredAt"}, ev)
 			}
 			if cmd.Flags().Changed("failure-callback-url") {
 				v, _ := cmd.Flags().GetString("failure-callback-url")
-				cmdutil.SetPath(body, []string{"failureCallbackUrl"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "failure-callback-url", err)
+				}
+				cmdutil.SetPath(body, []string{"failureCallbackUrl"}, ev)
 			}
 			if cmd.Flags().Changed("habitability-index") {
 				v, _ := cmd.Flags().GetFloat64("habitability-index")
@@ -85,15 +102,27 @@ func newPlanetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("image") {
 				v, _ := cmd.Flags().GetString("image")
-				cmdutil.SetPath(body, []string{"image"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "image", err)
+				}
+				cmdutil.SetPath(body, []string{"image"}, ev)
 			}
 			if cmd.Flags().Changed("last-updated") {
 				v, _ := cmd.Flags().GetString("last-updated")
-				cmdutil.SetPath(body, []string{"lastUpdated"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "last-updated", err)
+				}
+				cmdutil.SetPath(body, []string{"lastUpdated"}, ev)
 			}
 			if cmd.Flags().Changed("name") {
 				v, _ := cmd.Flags().GetString("name")
-				cmdutil.SetPath(body, []string{"name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "name", err)
+				}
+				cmdutil.SetPath(body, []string{"name"}, ev)
 			}
 			if cmd.Flags().Changed("physical-properties.gravity") {
 				v, _ := cmd.Flags().GetFloat64("physical-properties.gravity")
@@ -133,13 +162,21 @@ func newPlanetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("success-callback-url") {
 				v, _ := cmd.Flags().GetString("success-callback-url")
-				cmdutil.SetPath(body, []string{"successCallbackUrl"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "success-callback-url", err)
+				}
+				cmdutil.SetPath(body, []string{"successCallbackUrl"}, ev)
 			}
 			if cmd.Flags().Changed("tags") {
 				vs, _ := cmd.Flags().GetStringArray("tags")
 				items := make([]any, 0, len(vs))
 				for _, s := range vs {
-					jv, err := cmdutil.Coerce(s, "string")
+					ev, err := cmdutil.ExpandArg(s)
+					if err != nil {
+						return fmt.Errorf("--%s: %w", "tags", err)
+					}
+					jv, err := cmdutil.Coerce(ev, "string")
 					if err != nil {
 						return fmt.Errorf("--%s: %w", "tags", err)
 					}
@@ -149,7 +186,11 @@ func newPlanetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("type") {
 				v, _ := cmd.Flags().GetString("type")
-				cmdutil.SetPath(body, []string{"type"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "type", err)
+				}
+				cmdutil.SetPath(body, []string{"type"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)
@@ -292,16 +333,24 @@ func newPlanetsImageCmd(f *factory.Factory) *cobra.Command {
 				v, _ := cmd.Flags().GetInt64("planet-id")
 				req.PlanetId = strconv.FormatInt(v, 10)
 			}
-			body := map[string]any{}
+			var parts []cmdutil.MultipartPart
 			if cmd.Flags().Changed("image") {
 				v, _ := cmd.Flags().GetString("image")
-				cmdutil.SetPath(body, []string{"image"}, v)
+				data, filename, err := cmdutil.ExpandFilePart(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "image", err)
+				}
+				parts = append(parts, cmdutil.MultipartPart{Name: "image", File: data, Filename: filename})
 			}
-			if len(body) > 0 {
-				b, err := json.Marshal(body)
+			if len(parts) > 0 {
+				b, ct, err := cmdutil.BuildMultipart(parts)
 				if err != nil {
 					return err
 				}
+				if req.Header == nil {
+					req.Header = http.Header{}
+				}
+				req.Header.Set("Content-Type", ct)
 				req.Body = b
 			}
 			resp, err := cl.PlanetsImage(cmd.Context(), req)
@@ -351,19 +400,35 @@ func newPlanetsUpdateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("creator.name") {
 				v, _ := cmd.Flags().GetString("creator.name")
-				cmdutil.SetPath(body, []string{"creator", "name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "creator.name", err)
+				}
+				cmdutil.SetPath(body, []string{"creator", "name"}, ev)
 			}
 			if cmd.Flags().Changed("description") {
 				v, _ := cmd.Flags().GetString("description")
-				cmdutil.SetPath(body, []string{"description"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "description", err)
+				}
+				cmdutil.SetPath(body, []string{"description"}, ev)
 			}
 			if cmd.Flags().Changed("discovered-at") {
 				v, _ := cmd.Flags().GetString("discovered-at")
-				cmdutil.SetPath(body, []string{"discoveredAt"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "discovered-at", err)
+				}
+				cmdutil.SetPath(body, []string{"discoveredAt"}, ev)
 			}
 			if cmd.Flags().Changed("failure-callback-url") {
 				v, _ := cmd.Flags().GetString("failure-callback-url")
-				cmdutil.SetPath(body, []string{"failureCallbackUrl"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "failure-callback-url", err)
+				}
+				cmdutil.SetPath(body, []string{"failureCallbackUrl"}, ev)
 			}
 			if cmd.Flags().Changed("habitability-index") {
 				v, _ := cmd.Flags().GetFloat64("habitability-index")
@@ -375,15 +440,27 @@ func newPlanetsUpdateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("image") {
 				v, _ := cmd.Flags().GetString("image")
-				cmdutil.SetPath(body, []string{"image"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "image", err)
+				}
+				cmdutil.SetPath(body, []string{"image"}, ev)
 			}
 			if cmd.Flags().Changed("last-updated") {
 				v, _ := cmd.Flags().GetString("last-updated")
-				cmdutil.SetPath(body, []string{"lastUpdated"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "last-updated", err)
+				}
+				cmdutil.SetPath(body, []string{"lastUpdated"}, ev)
 			}
 			if cmd.Flags().Changed("name") {
 				v, _ := cmd.Flags().GetString("name")
-				cmdutil.SetPath(body, []string{"name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "name", err)
+				}
+				cmdutil.SetPath(body, []string{"name"}, ev)
 			}
 			if cmd.Flags().Changed("physical-properties.gravity") {
 				v, _ := cmd.Flags().GetFloat64("physical-properties.gravity")
@@ -423,13 +500,21 @@ func newPlanetsUpdateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("success-callback-url") {
 				v, _ := cmd.Flags().GetString("success-callback-url")
-				cmdutil.SetPath(body, []string{"successCallbackUrl"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "success-callback-url", err)
+				}
+				cmdutil.SetPath(body, []string{"successCallbackUrl"}, ev)
 			}
 			if cmd.Flags().Changed("tags") {
 				vs, _ := cmd.Flags().GetStringArray("tags")
 				items := make([]any, 0, len(vs))
 				for _, s := range vs {
-					jv, err := cmdutil.Coerce(s, "string")
+					ev, err := cmdutil.ExpandArg(s)
+					if err != nil {
+						return fmt.Errorf("--%s: %w", "tags", err)
+					}
+					jv, err := cmdutil.Coerce(ev, "string")
 					if err != nil {
 						return fmt.Errorf("--%s: %w", "tags", err)
 					}
@@ -439,7 +524,11 @@ func newPlanetsUpdateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("type") {
 				v, _ := cmd.Flags().GetString("type")
-				cmdutil.SetPath(body, []string{"type"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "type", err)
+				}
+				cmdutil.SetPath(body, []string{"type"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)

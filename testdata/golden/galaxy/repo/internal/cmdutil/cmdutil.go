@@ -5,12 +5,15 @@ package cmdutil
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path"
@@ -86,6 +89,113 @@ func ExitCode(err error) int {
 		return ExitUsage
 	}
 	return ExitInternal
+}
+
+// ExpandArg expands @ syntax in a string flag value destined for a JSON body
+// field: a bare @path or @file://path reads the named file, sniffing its
+// bytes as text (kept as a string) or binary (base64-encoded, since JSON has
+// no raw-byte type); @data://literal passes the rest through unchanged with
+// no file read; a leading \@ escapes to a literal @. Anything else passes
+// through untouched. Applies only to string body-path flags and --body —
+// the @ convention is for payloads, not query/header/path params.
+func ExpandArg(v string) (string, error) {
+	src, err := parseArgSource(v)
+	if err != nil {
+		return "", err
+	}
+	if !src.sniff {
+		return string(src.data), nil
+	}
+	if utf8.Valid(src.data) {
+		return string(src.data), nil
+	}
+	return base64.StdEncoding.EncodeToString(src.data), nil
+}
+
+// ExpandFilePart expands @ syntax for a multipart/form-data part. Unlike
+// ExpandArg it returns the raw bytes (never base64 — multipart carries
+// binary natively) plus the source filename when the value read an actual
+// file; filename is empty for a literal or plain value, which BuildMultipart
+// then sends as a text part instead of a file part.
+func ExpandFilePart(v string) (data []byte, filename string, err error) {
+	src, err := parseArgSource(v)
+	if err != nil {
+		return nil, "", err
+	}
+	return src.data, src.filename, nil
+}
+
+// argSource is the parsed form of a possibly-@-prefixed flag value.
+type argSource struct {
+	data     []byte
+	filename string // set only when the value read an actual file
+	sniff    bool   // true only for a real file read; literals pass through as-is
+}
+
+func parseArgSource(v string) (argSource, error) {
+	switch {
+	case strings.HasPrefix(v, `\@`):
+		return argSource{data: []byte(v[1:])}, nil
+	case strings.HasPrefix(v, "@data://"):
+		return argSource{data: []byte(strings.TrimPrefix(v, "@data://"))}, nil
+	case strings.HasPrefix(v, "@file://"):
+		return readArgFile(strings.TrimPrefix(v, "@file://"))
+	case strings.HasPrefix(v, "@"):
+		return readArgFile(v[1:])
+	default:
+		return argSource{data: []byte(v)}, nil
+	}
+}
+
+func readArgFile(path string) (argSource, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return argSource{}, &UsageError{Err: fmt.Errorf("reading %s: %w", path, err)}
+	}
+	return argSource{data: data, filename: filepath.Base(path), sniff: true}, nil
+}
+
+// MultipartPart is one field of a multipart/form-data request body.
+type MultipartPart struct {
+	Name     string
+	Value    string // text part; ignored when File is set
+	File     []byte // file part bytes; nil means a text part
+	Filename string
+}
+
+// BuildMultipart renders parts into a multipart/form-data body, sniffing
+// each file part's Content-Type from its own bytes — multipart carries
+// binary per part, so there's no single whole-body sniff the way a JSON
+// @file value gets.
+func BuildMultipart(parts []MultipartPart) (body []byte, contentType string, err error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for _, p := range parts {
+		if p.File == nil {
+			fw, err := w.CreateFormField(p.Name)
+			if err != nil {
+				return nil, "", err
+			}
+			if _, err := fw.Write([]byte(p.Value)); err != nil {
+				return nil, "", err
+			}
+			continue
+		}
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, p.Name, p.Filename))
+		h.Set("Content-Type", http.DetectContentType(p.File))
+		fw, err := w.CreatePart(h)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := fw.Write(p.File); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
 }
 
 // ResolveCredential returns flagValue if set, else the named env var — the

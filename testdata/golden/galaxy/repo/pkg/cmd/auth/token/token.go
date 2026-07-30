@@ -5,6 +5,7 @@ package token
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -37,11 +38,19 @@ func newAuthTokenCreateCmd(f *factory.Factory) *cobra.Command {
 			body := map[string]any{}
 			if cmd.Flags().Changed("email") {
 				v, _ := cmd.Flags().GetString("email")
-				cmdutil.SetPath(body, []string{"email"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "email", err)
+				}
+				cmdutil.SetPath(body, []string{"email"}, ev)
 			}
 			if cmd.Flags().Changed("password") {
 				v, _ := cmd.Flags().GetString("password")
-				cmdutil.SetPath(body, []string{"password"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "password", err)
+				}
+				cmdutil.SetPath(body, []string{"password"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)

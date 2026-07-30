@@ -92,6 +92,7 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
 			Deprecated:  op.Deprecated,
 			Pagination:  ov.Pagination,
 			Flags:       flagsFor(op, schemaIdx),
+			Multipart:   operationIsMultipart(op),
 			Security:    op.Security,
 		}
 		for _, a := range ov.Aliases {

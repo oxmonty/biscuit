@@ -79,6 +79,7 @@ type verbView struct {
 	HeadFlags  []*flagView
 	BodyFlags  []*flagView // structured dot-notation body flags
 	WholeBody  *flagView   // the single opaque body flag, when the body didn't flatten
+	Multipart  bool        // BodyFlags become multipart/form-data parts, not a JSON object
 
 	SecurityLit string // Go [][]string literal: this verb's security OR-list, passed to Client.do
 }
@@ -101,9 +102,10 @@ type flagView struct {
 	Name        string
 	Description string
 	Type        string // string | integer | number | boolean | json
+	Format      string // schema format (e.g. "binary"); string-typed flags only
 	Required    bool
 	Repeated    bool
-	Wire        string // path/query/header wire name
+	Wire        string // path/query/header wire name; body flags reuse it as the multipart part name (leaf property)
 	Field       string // path only: request struct field
 	BodyPathLit string // body only: Go literal like []string{"a", "b"}
 
@@ -358,6 +360,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 		Ident:       idents.claim(goExported(append(append([]string(nil), chain...), v.Name)...)),
 		Method:      v.Method,
 		Path:        v.Path,
+		Multipart:   v.Multipart,
 		SecurityLit: securityLit(v.Security),
 	}
 	if vv.Short == "" {
@@ -371,6 +374,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 			Name:        f.Name,
 			Description: firstLine(f.Description),
 			Type:        f.Type,
+			Format:      f.Format,
 			Required:    f.Required,
 			Repeated:    f.Repeated,
 			Wire:        f.Param,
@@ -389,6 +393,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 				vv.WholeBody = fv
 			} else {
 				fv.BodyPathLit = goStringSliceLit(f.BodyPath)
+				fv.Wire = f.BodyPath[len(f.BodyPath)-1]
 				vv.BodyFlags = append(vv.BodyFlags, fv)
 			}
 		}
