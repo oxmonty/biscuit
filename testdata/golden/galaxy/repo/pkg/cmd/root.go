@@ -36,6 +36,7 @@ func NewRootCmd(version string) *cobra.Command {
 	var formatError string
 	var output string
 	var includeHeaders bool
+	var maxPages int
 	var apiKeyCookie string
 	var apiKeyHeader string
 	var apiKeyQuery string
@@ -53,6 +54,7 @@ func NewRootCmd(version string) *cobra.Command {
 			IncludeHeaders: includeHeaders,
 		}
 	}
+	f.MaxPages = func() int { return maxPages }
 	f.Client = func() (*client.Client, error) {
 		h, err := cmdutil.ParseHeaders(headers)
 		if err != nil {
@@ -120,6 +122,7 @@ func NewRootCmd(version string) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&formatError, "format-error", "", "output format override for error response bodies (default: --format)")
 	cmd.PersistentFlags().StringVarP(&output, "output", "o", "", `write the response body to a file instead of stdout; "auto" derives a filename from the response, "-" forces stdout`)
 	cmd.PersistentFlags().BoolVar(&includeHeaders, "include-headers", false, "print the response status and headers before the body")
+	cmd.PersistentFlags().IntVar(&maxPages, "max-pages", 0, "maximum pages to fetch on a paginated command (0 walks every page)")
 	cmd.PersistentFlags().StringVar(&apiKeyCookie, "api-key-cookie", "", "credential for the apiKeyCookie security scheme (env GALAXY_API_KEY_COOKIE)")
 	cmd.PersistentFlags().StringVar(&apiKeyHeader, "api-key-header", "", "credential for the apiKeyHeader security scheme (env GALAXY_API_KEY_HEADER)")
 	cmd.PersistentFlags().StringVar(&apiKeyQuery, "api-key-query", "", "credential for the apiKeyQuery security scheme (env GALAXY_API_KEY_QUERY)")

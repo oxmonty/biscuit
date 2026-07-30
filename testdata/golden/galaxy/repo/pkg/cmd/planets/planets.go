@@ -4,6 +4,7 @@
 package planets
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -306,11 +307,19 @@ func newPlanetsGetAllDataCmd(f *factory.Factory) *cobra.Command {
 				v, _ := cmd.Flags().GetInt64("offset")
 				req.Query.Set("offset", strconv.FormatInt(v, 10))
 			}
-			resp, err := cl.PlanetsGetAllData(cmd.Context(), req)
-			if err != nil {
-				return err
+			if req.Query == nil {
+				req.Query = url.Values{}
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
+			return cmdutil.WalkPages(cmd.Context(), f.IOStreams, f.Output(), f.MaxPages(), cmdutil.Pagination{
+				Type:       "offset",
+				Param:      "offset",
+				LimitParam: "limit",
+				ItemsPath:  "data",
+				NextPath:   "meta.next",
+				NextKind:   "url",
+			}, req.Query, func(ctx context.Context) (*client.Response, error) {
+				return cl.PlanetsGetAllData(ctx, req)
+			})
 		},
 	}
 	cmd.Flags().Int64("limit", 0, "The number of items to return")

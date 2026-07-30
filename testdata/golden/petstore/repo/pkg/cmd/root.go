@@ -32,6 +32,7 @@ func NewRootCmd(version string) *cobra.Command {
 	var formatError string
 	var output string
 	var includeHeaders bool
+	var maxPages int
 	f.Output = func() *cmdutil.OutputOptions {
 		return &cmdutil.OutputOptions{
 			Format:         format,
@@ -42,6 +43,7 @@ func NewRootCmd(version string) *cobra.Command {
 			IncludeHeaders: includeHeaders,
 		}
 	}
+	f.MaxPages = func() int { return maxPages }
 	f.Client = func() (*client.Client, error) {
 		h, err := cmdutil.ParseHeaders(headers)
 		if err != nil {
@@ -86,6 +88,7 @@ func NewRootCmd(version string) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&formatError, "format-error", "", "output format override for error response bodies (default: --format)")
 	cmd.PersistentFlags().StringVarP(&output, "output", "o", "", `write the response body to a file instead of stdout; "auto" derives a filename from the response, "-" forces stdout`)
 	cmd.PersistentFlags().BoolVar(&includeHeaders, "include-headers", false, "print the response status and headers before the body")
+	cmd.PersistentFlags().IntVar(&maxPages, "max-pages", 0, "maximum pages to fetch on a paginated command (0 walks every page)")
 	cmd.AddCommand(pets.NewCmdPets(f))
 	cmd.AddCommand(newUpgradeCmd(version))
 	return cmd

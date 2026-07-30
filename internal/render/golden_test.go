@@ -55,7 +55,7 @@ func renderSpec(t *testing.T, specPath string, cfg *config.Config) []File {
 	if err != nil {
 		t.Fatalf("Load(%s): %v", specPath, err)
 	}
-	api := mapping.Map(doc, mapping.OverridesFromConfig(cfg))
+	api := mapping.Map(doc, cfg)
 	files, err := Render(api, cfg, Provenance{SpecPath: filepath.Base(specPath), SpecSHA256: "golden"})
 	if err != nil {
 		t.Fatalf("Render(%s): %v", specPath, err)
@@ -140,7 +140,7 @@ func restoreFixtures(t *testing.T, name, repoDir string) {
 // commit: same biscuit + same spec must produce the same plan bytes. The
 // compile gate for these runs in TestCompileBigSpecs.
 func TestFilePlanHashes(t *testing.T) {
-	specs := []string{"museum.yaml", "train-travel.yaml", "pokeapi.yml", "openai.yaml", "stripe.yaml"}
+	specs := []string{"museum.yaml", "train-travel.yaml", "pokeapi.yml", "openai.yaml", "stripe.yaml", "paginated.yaml"}
 	hashFile := filepath.Join(goldenDir, "hashes.txt")
 
 	var lines []string

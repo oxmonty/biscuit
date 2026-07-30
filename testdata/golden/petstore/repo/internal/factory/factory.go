@@ -14,4 +14,5 @@ type Factory struct {
 	IOStreams *iostreams.IOStreams
 	Client    func() (*client.Client, error)
 	Output    func() *cmdutil.OutputOptions
+	MaxPages  func() int
 }

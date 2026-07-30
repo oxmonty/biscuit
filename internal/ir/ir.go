@@ -40,10 +40,22 @@ type Verb struct {
 	Summary     string
 	Deprecated  bool
 	Aliases     []string              // kebab-case, from overrides
-	Pagination  string                // pagination hint, from overrides
+	Pagination  *Pagination           // resolved pagination scheme; nil means the verb fetches one page
 	Flags       []Flag                // sorted by Name
 	Multipart   bool                  // request body content type is multipart/form-data: BodyFlags become file/text parts, not a JSON object
 	Security    []SecurityRequirement // OR-list of alternatives; empty means no auth requirement
+}
+
+// Pagination is the matcher's verdict for one verb: which scheme claimed the
+// operation and everything the generated walk loop needs to advance a page.
+type Pagination struct {
+	Scheme     string // matched scheme name, declared or built-in
+	Type       string // cursor | offset | page
+	Param      string // query param the walk advances
+	LimitParam string // query param carrying the page size; empty when the operation declares none
+	ItemsPath  string // path to the items array; "@this" for a bare top-level array body
+	NextPath   string // path to the next-page signal; empty for the link_header and step kinds
+	NextKind   string // has_more | cursor | url | link_header | step
 }
 
 // Flag is one statically defined flag on a verb. Static definition is the
@@ -147,6 +159,7 @@ type Response struct {
 	Status      string // "200", "default"
 	Description string
 	Content     []MediaType
+	Headers     []string // documented response header names, sorted
 }
 
 type NamedSchema struct {

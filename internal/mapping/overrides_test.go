@@ -16,7 +16,7 @@ func writeFile(path, content string) error {
 func deriveWith(ops []ir.Operation, overrides map[string]ir.Override) *ir.API {
 	api := &ir.API{Operations: ops}
 	sortOperations(api.Operations)
-	deriveCommands(api, overrides)
+	deriveCommands(api, overrides, builtinSchemes)
 	return api
 }
 
@@ -60,18 +60,14 @@ func TestOverrideExtensionAndSidecarPrecedence(t *testing.T) {
 	api := deriveWith(
 		[]ir.Operation{{
 			ID: "listUsers", Method: "GET", Path: "/users",
-			XBiscuit: ir.Override{Name: "from-extension", Pagination: "cursor"},
+			XBiscuit: ir.Override{Name: "from-extension"},
 		}},
 		map[string]ir.Override{"listUsers": {Name: "from-sidecar"}},
 	)
 
-	// then: the sidecar name wins; the extension pagination hint survives
-	verb := api.Commands[0].Verbs[0]
-	if verb.Name != "from-sidecar" {
+	// then: the sidecar name wins
+	if verb := api.Commands[0].Verbs[0]; verb.Name != "from-sidecar" {
 		t.Errorf("name = %q, want from-sidecar", verb.Name)
-	}
-	if verb.Pagination != "cursor" {
-		t.Errorf("pagination = %q, want cursor (extension value untouched)", verb.Pagination)
 	}
 }
 
@@ -112,7 +108,7 @@ paths:
       operationId: listUsers
       x-biscuit-name: everyone
       x-biscuit-group: admin
-      x-biscuit-pagination: cursor
+      x-biscuit-pagination: off
       responses:
         '200': {description: OK}
   /internal/dump:
@@ -132,7 +128,7 @@ paths:
 	if got := flatten(api.Commands, ""); !reflect.DeepEqual(got, []string{"admin everyone"}) {
 		t.Fatalf("commands = %v", got)
 	}
-	if api.Commands[0].Verbs[0].Pagination != "cursor" {
-		t.Errorf("pagination = %q", api.Commands[0].Verbs[0].Pagination)
+	if p := api.Commands[0].Verbs[0].Pagination; p != nil {
+		t.Errorf("pagination = %+v, want nil (x-biscuit-pagination: off)", p)
 	}
 }

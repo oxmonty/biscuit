@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: Paginated
+  version: 1.0.0
+  description: Two list endpoints, one per pagination family, for pinning the walk end to end.
+servers:
+  - url: http://localhost:8080
+paths:
+  /widgets:
+    get:
+      summary: List widgets
+      operationId: listWidgets
+      parameters:
+        - name: after
+          in: query
+          description: Opaque cursor — the id of the previous page's last widget.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Widgets per page.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A page of widgets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Widget'
+                  has_more:
+                    type: boolean
+  /gadgets:
+    get:
+      summary: List gadgets
+      operationId: listGadgets
+      parameters:
+        - name: offset
+          in: query
+          description: Gadgets to skip.
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Gadgets per page.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A page of gadgets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Gadget'
+                  next:
+                    type:
+                      - string
+                      - 'null'
+                  total:
+                    type: integer
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Gadget:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string

@@ -19,9 +19,9 @@ import (
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
-// OverridesFromConfig lifts the sidecar's per-operation entries into the
-// shape Map applies.
-func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
+// overridesFromConfig lifts the sidecar's per-operation entries into the
+// shape deriveCommands applies.
+func overridesFromConfig(cfg *config.Config) map[string]ir.Override {
 	if cfg == nil || len(cfg.Operations) == 0 {
 		return nil
 	}
@@ -38,10 +38,11 @@ func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
 	return overrides
 }
 
-// Map converts a loaded spec into the sorted, normalized IR. overrides is
-// biscuit.yaml's per-operation set, keyed by operationId or "METHOD /path";
-// in-spec x-biscuit-* extensions merge beneath it, sidecar winning field-wise.
-func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
+// Map converts a loaded spec into the sorted, normalized IR. cfg supplies the
+// per-operation overrides (keyed by operationId or "METHOD /path", with
+// in-spec x-biscuit-* extensions merging beneath them, sidecar winning
+// field-wise) and any declared pagination schemes; a nil cfg means neither.
+func Map(doc *spec.Document, cfg *config.Config) *ir.API {
 	m := doc.Model
 	api := &ir.API{
 		SpecVersion: m.Version,
@@ -105,7 +106,7 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 		}
 	}
 
-	deriveCommands(api, overrides)
+	deriveCommands(api, overridesFromConfig(cfg), schemesFor(cfg))
 	return api
 }
 
@@ -213,6 +214,7 @@ func mapPathItem(path string, item *v3.PathItem, globalSecurity []ir.SecurityReq
 					Status:      status,
 					Description: resp.Description,
 					Content:     mapContent(resp.Content),
+					Headers:     headerNames(resp.Headers),
 				})
 			}
 			if op.Responses.Default != nil {
@@ -220,6 +222,7 @@ func mapPathItem(path string, item *v3.PathItem, globalSecurity []ir.SecurityReq
 					Status:      "default",
 					Description: op.Responses.Default.Description,
 					Content:     mapContent(op.Responses.Default.Content),
+					Headers:     headerNames(op.Responses.Default.Headers),
 				})
 			}
 			sort.Slice(mapped.Responses, func(i, j int) bool {
@@ -229,6 +232,21 @@ func mapPathItem(path string, item *v3.PathItem, globalSecurity []ir.SecurityReq
 		ops = append(ops, mapped)
 	}
 	return ops
+}
+
+// headerNames collects a response's documented header names. Pagination
+// detection reads them: a Link header is only a next-page signal when the
+// spec says the endpoint sends one.
+func headerNames(headers *orderedmap.Map[string, *v3.Header]) []string {
+	if headers == nil {
+		return nil
+	}
+	var names []string
+	for name := range headers.FromOldest() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func mapContent(content *orderedmap.Map[string, *v3.MediaType]) []ir.MediaType {

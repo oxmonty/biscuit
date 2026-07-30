@@ -5,6 +5,7 @@ package cmdutil
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -341,6 +342,222 @@ func PrintResponse(ios *iostreams.IOStreams, resp *client.Response, opts *Output
 		return &APIError{Status: resp.Status}
 	}
 	return nil
+}
+
+// Pagination is one operation's resolved pagination scheme, filled in by the
+// generator from the scheme that matched the operation's request params and
+// response shape.
+type Pagination struct {
+	Type       string // cursor | offset | page
+	Param      string // query param the walk advances
+	LimitParam string // query param carrying the page size; "" when the operation has none
+	ItemsPath  string // GJSON path to the items array; "@this" for a bare top-level array
+	NextPath   string // GJSON path to the next-page signal; "" for the link_header and step kinds
+	NextKind   string // has_more | cursor | url | link_header | step
+}
+
+// WalkPages fetches every page of a paginated operation and prints the items
+// as one logical result. call re-issues the operation; query is the request's
+// live query values, which the walk advances between calls. maxPages bounds
+// the walk, 0 meaning walk to exhaustion.
+//
+// Streaming formats print each page's items as they arrive; document formats
+// accumulate them and print one merged array at the end.
+func WalkPages(ctx context.Context, ios *iostreams.IOStreams, opts *OutputOptions, maxPages int, p Pagination, query url.Values, call func(context.Context) (*client.Response, error)) error {
+	// A file destination gets one document rather than one truncating write
+	// per page, so --output always accumulates.
+	stream := streamingFormat(opts.Format, ios) && (opts.Output == "" || opts.Output == "-")
+	pageOpts := *opts
+	if stream && (pageOpts.Format == "" || pageOpts.Format == "auto") {
+		// a piped walk is a stream of items, so auto resolves to one item per
+		// line rather than one compact array per page
+		pageOpts.Format = "jsonl"
+	}
+
+	// ponytail: a document format holds every item in memory to print one
+	// merged array; --max-pages is the ceiling, and --format jsonl streams
+	// instead for a walk too big to hold.
+	var merged []json.RawMessage
+	var first *client.Response
+	var lastNext string
+
+	for n := 1; maxPages <= 0 || n <= maxPages; n++ {
+		resp, err := call(ctx)
+		if err != nil {
+			return err
+		}
+		if resp.Status >= 400 {
+			// A failed page ends the walk. Items already streamed stay
+			// printed; a document format prints only this error body.
+			return PrintResponse(ios, resp, &pageOpts)
+		}
+		items := gjson.GetBytes(resp.Body, p.ItemsPath)
+		elems := items.Array()
+		if stream {
+			page := *resp
+			page.Body = []byte(items.Raw)
+			if err := PrintResponse(ios, &page, &pageOpts); err != nil {
+				return err
+			}
+		} else {
+			if first == nil {
+				first = resp
+			}
+			for _, e := range elems {
+				merged = append(merged, json.RawMessage(e.Raw))
+			}
+		}
+		pageOpts.IncludeHeaders = false // --include-headers prints the first page's only
+
+		if len(elems) == 0 {
+			break
+		}
+		next, more := nextPage(p, resp, elems, query)
+		if !more || next == lastNext {
+			break // exhausted, or a repeated token that would loop forever
+		}
+		lastNext = next
+	}
+
+	if stream || first == nil {
+		return nil
+	}
+	out := *first
+	out.Body = mergedArray(merged)
+	return PrintResponse(ios, &out, opts)
+}
+
+// streamingFormat reports whether format prints each page as it arrives
+// rather than accumulating one document.
+func streamingFormat(format string, ios *iostreams.IOStreams) bool {
+	switch format {
+	case "jsonl", "raw":
+		return true
+	case "", "auto":
+		return !ios.IsStdoutTTY()
+	}
+	return false
+}
+
+// nextPage advances query to the next page from resp's next-page signal,
+// returning the token it set. more is false when the response says the walk
+// is over — the signal is exhausted, or there is nothing to advance with.
+func nextPage(p Pagination, resp *client.Response, elems []gjson.Result, query url.Values) (token string, more bool) {
+	switch p.NextKind {
+	case "has_more":
+		if !gjson.GetBytes(resp.Body, p.NextPath).Bool() {
+			return "", false
+		}
+		// has_more carries no token of its own: the next cursor is the
+		// page's last id, which OpenAI states as last_id and Stripe leaves
+		// on the last object.
+		cursor := gjson.GetBytes(resp.Body, "last_id").String()
+		if cursor == "" {
+			cursor = elems[len(elems)-1].Get("id").String()
+		}
+		if cursor == "" {
+			return "", false
+		}
+		query.Set(p.Param, cursor)
+		return cursor, true
+
+	case "cursor":
+		cursor := gjson.GetBytes(resp.Body, p.NextPath).String()
+		if cursor == "" {
+			return "", false
+		}
+		query.Set(p.Param, cursor)
+		return cursor, true
+
+	case "url", "link_header":
+		raw := gjson.GetBytes(resp.Body, p.NextPath).String()
+		if p.NextKind == "link_header" {
+			raw = linkRel(resp.Header.Get("Link"), "next")
+		}
+		if raw == "" {
+			return "", false
+		}
+		next, err := url.Parse(raw)
+		if err != nil {
+			return "", false
+		}
+		// Only the next URL's query is applied, onto the same operation. A
+		// different path is a different operation, and following it blindly
+		// would send this command's credentials somewhere it never agreed to.
+		cur, err := url.Parse(resp.URL)
+		if err != nil || (next.Path != "" && next.Path != cur.Path) {
+			return "", false
+		}
+		for k := range query {
+			delete(query, k)
+		}
+		for k, vs := range next.Query() {
+			query[k] = vs
+		}
+		return next.RawQuery, true
+
+	case "step":
+		return stepPage(p, len(elems), query)
+	}
+	return "", false
+}
+
+// stepPage advances an offset/page walk arithmetically, for schemes whose
+// response documents a total instead of a next link. A short page — fewer
+// items than the requested limit — is the last one.
+func stepPage(p Pagination, n int, query url.Values) (string, bool) {
+	if p.LimitParam != "" {
+		if limit, err := strconv.Atoi(query.Get(p.LimitParam)); err == nil && n < limit {
+			return "", false
+		}
+	}
+	cur, _ := strconv.Atoi(query.Get(p.Param))
+	if p.Type == "offset" {
+		cur += n
+	} else {
+		if cur == 0 {
+			cur = 1 // page numbering is 1-based when the flag was left unset
+		}
+		cur++
+	}
+	v := strconv.Itoa(cur)
+	query.Set(p.Param, v)
+	return v, true
+}
+
+// linkRel returns the URL of the first RFC 5988 Link entry carrying the named
+// relation.
+//
+// ponytail: splits on "," and ";", which a URL containing either would defeat;
+// a real Link parser only if an API in the wild emits one.
+func linkRel(header, rel string) string {
+	for _, entry := range strings.Split(header, ",") {
+		parts := strings.Split(entry, ";")
+		if len(parts) < 2 {
+			continue
+		}
+		target := strings.Trim(strings.TrimSpace(parts[0]), "<>")
+		for _, param := range parts[1:] {
+			k, v, ok := strings.Cut(strings.TrimSpace(param), "=")
+			if ok && strings.TrimSpace(k) == "rel" && strings.Trim(strings.TrimSpace(v), `"`) == rel {
+				return target
+			}
+		}
+	}
+	return ""
+}
+
+// mergedArray renders the accumulated items as one JSON array, element bytes
+// untouched so key order survives.
+func mergedArray(items []json.RawMessage) []byte {
+	if len(items) == 0 {
+		return []byte("[]")
+	}
+	out, err := json.Marshal(items)
+	if err != nil {
+		return []byte("[]")
+	}
+	return out
 }
 
 // writeHeaders prints resp's status line and sorted headers to out, ahead of

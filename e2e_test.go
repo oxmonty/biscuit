@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -369,6 +371,160 @@ func envWithoutPrefix(t *testing.T, prefix string) []string {
 		}
 	}
 	return env
+}
+
+// TestEndToEndPaginationWalk pins transparent page walking end to end.
+// paginated.yaml carries one endpoint per pagination family — a Stripe-shaped
+// cursor and a classic offset/limit — because the walk's stop conditions and
+// next-request arithmetic only exist in generated code, so nothing short of a
+// built binary against a real server proves them.
+func TestEndToEndPaginationWalk(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e skipped in -short")
+	}
+
+	// given: a server paging 6 widgets three at a time, cursored on the id of
+	// each page's last widget, and 4 gadgets behind an offset/limit next URL
+	work := t.TempDir()
+	biscuitBin := filepath.Join(work, "biscuit")
+	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building biscuit: %v\n%s", err, out)
+	}
+
+	widgets := []string{"w1", "w2", "w3", "w4", "w5", "w6"}
+	var widgetRequests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/gadgets" {
+			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+			next := ""
+			if offset+2 < 4 {
+				next = fmt.Sprintf("/gadgets?limit=2&offset=%d", offset+2)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]string{{"id": fmt.Sprintf("g%d", offset+1)}, {"id": fmt.Sprintf("g%d", offset+2)}},
+				"next":    next,
+				"total":   4,
+			})
+			return
+		}
+		widgetRequests = append(widgetRequests, r.URL.RawQuery)
+		start := 0
+		if after := r.URL.Query().Get("after"); after != "" {
+			for i, id := range widgets {
+				if id == after {
+					start = i + 1
+				}
+			}
+		}
+		end := min(start+2, len(widgets))
+		page := make([]map[string]string, 0, end-start)
+		for _, id := range widgets[start:end] {
+			page = append(page, map[string]string{"id": id})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": page, "has_more": end < len(widgets)})
+	}))
+	defer srv.Close()
+
+	// when: generating and building the CLI for the paginated spec
+	spec, err := filepath.Abs("testdata/specs/paginated.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outDir := filepath.Join(work, "paginated-cli")
+	gen := exec.Command(biscuitBin, "generate", "--spec", spec, "--out", outDir, "--quiet")
+	gen.Dir = work
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("biscuit generate: %v\n%s", err, out)
+	}
+	cliBin := filepath.Join(work, "paginated")
+	if runtime.GOOS == "windows" {
+		cliBin += ".exe"
+	}
+	buildCLI := exec.Command("go", "build", "-o", cliBin, "./cmd/paginated")
+	buildCLI.Dir = outDir
+	if out, err := buildCLI.CombinedOutput(); err != nil {
+		t.Fatalf("building generated CLI: %v\n%s", err, out)
+	}
+
+	// then: the default walk fetches every page and emits every item —
+	// stdout is a pipe here, so items stream as JSONL, one per line
+	all := exec.Command(cliBin, "widgets", "list", "--limit", "2", "--base-url", srv.URL)
+	out, err := all.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets list: %v\n%s", err, out)
+	}
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(lines) != len(widgets) {
+		t.Errorf("walked output = %d lines, want %d (one per widget):\n%s", len(lines), len(widgets), out)
+	}
+	for _, want := range []string{"w1", "w6"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("walked output missing %s:\n%s", want, out)
+		}
+	}
+	if len(widgetRequests) != 3 {
+		t.Errorf("requests = %d (%v), want 3 pages", len(widgetRequests), widgetRequests)
+	}
+	// then: each page after the first carries the previous page's last id as
+	// its cursor, so the walk advances rather than refetching page one
+	if len(widgetRequests) > 1 && !strings.Contains(widgetRequests[1], "after=w2") {
+		t.Errorf("second request query = %q, want it to carry after=w2", widgetRequests[1])
+	}
+
+	// then: --max-pages bounds the walk, stopping mid-stream
+	widgetRequests = nil
+	bounded := exec.Command(cliBin, "widgets", "list", "--limit", "2", "--max-pages", "2", "--base-url", srv.URL)
+	out, err = bounded.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets list --max-pages 2: %v\n%s", err, out)
+	}
+	if len(widgetRequests) != 2 {
+		t.Errorf("--max-pages 2 made %d requests (%v), want 2", len(widgetRequests), widgetRequests)
+	}
+	if n := len(strings.Split(strings.TrimRight(string(out), "\n"), "\n")); n != 4 {
+		t.Errorf("--max-pages 2 emitted %d items, want 4:\n%s", n, out)
+	}
+
+	// then: a document format merges every page into one JSON array instead
+	// of printing one array per page
+	merged := exec.Command(cliBin, "widgets", "list", "--limit", "2", "--format", "json", "--base-url", srv.URL)
+	out, err = merged.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets list --format json: %v\n%s", err, out)
+	}
+	var items []struct{ ID string }
+	if err := json.Unmarshal(out, &items); err != nil {
+		t.Fatalf("--format json output is not one JSON array: %v\n%s", err, out)
+	}
+	if len(items) != len(widgets) {
+		t.Errorf("merged array = %d items, want %d:\n%s", len(items), len(widgets), out)
+	}
+
+	// then: --include-headers prints one header block, not one per page
+	withHeaders := exec.Command(cliBin, "widgets", "list", "--limit", "2", "--include-headers", "--base-url", srv.URL)
+	out, err = withHeaders.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets list --include-headers: %v\n%s", err, out)
+	}
+	if n := strings.Count(string(out), "HTTP 200"); n != 1 {
+		t.Errorf("--include-headers printed %d status lines over a 3-page walk, want 1:\n%s", n, out)
+	}
+
+	// then: an offset walk follows the response's next URL, applying its
+	// query onto the same operation
+	gadgets := exec.Command(cliBin, "gadgets", "list", "--limit", "2", "--format", "json", "--base-url", srv.URL)
+	out, err = gadgets.CombinedOutput()
+	if err != nil {
+		t.Fatalf("gadgets list: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &items); err != nil {
+		t.Fatalf("gadgets output is not one JSON array: %v\n%s", err, out)
+	}
+	if len(items) != 4 {
+		t.Errorf("gadgets merged array = %d items, want 4:\n%s", len(items), out)
+	}
 }
 
 // install.sh's offline suite rides go test so CI's single command runs it —

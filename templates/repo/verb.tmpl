@@ -173,11 +173,27 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 				req.Body = b
 			}
 {{- end}}
+{{- if .Pagination}}
+			if req.Query == nil {
+				req.Query = url.Values{}
+			}
+			return cmdutil.WalkPages(cmd.Context(), f.IOStreams, f.Output(), f.MaxPages(), cmdutil.Pagination{
+				Type:       {{q .Pagination.Type}},
+				Param:      {{q .Pagination.Param}},
+				LimitParam: {{q .Pagination.LimitParam}},
+				ItemsPath:  {{q .Pagination.ItemsPath}},
+				NextPath:   {{q .Pagination.NextPath}},
+				NextKind:   {{q .Pagination.NextKind}},
+			}, req.Query, func(ctx context.Context) (*client.Response, error) {
+				return cl.{{.Ident}}(ctx, req)
+			})
+{{- else}}
 			resp, err := cl.{{.Ident}}(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
 			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
+{{- end}}
 		},
 	}
 {{- range .Flags}}

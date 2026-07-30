@@ -81,7 +81,8 @@ type verbView struct {
 	WholeBody  *flagView   // the single opaque body flag, when the body didn't flatten
 	Multipart  bool        // BodyFlags become multipart/form-data parts, not a JSON object
 
-	SecurityLit string // Go [][]string literal: this verb's security OR-list, passed to Client.do
+	SecurityLit string         // Go [][]string literal: this verb's security OR-list, passed to Client.do
+	Pagination  *ir.Pagination // set when the operation matched a pagination scheme: the verb walks pages
 }
 
 // securityView is one components/securitySchemes entry's generated shape:
@@ -222,14 +223,14 @@ func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
 	flags := identSet{}
 	for _, f := range []string{
 		"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header",
-		"format", "transform", "transform-error", "format-error", "output", "include-headers",
+		"format", "transform", "transform-error", "format-error", "output", "include-headers", "max-pages",
 	} {
 		flags.claim(f)
 	}
 	vars := identSet{}
 	for _, v := range []string{
 		"baseURL", "maxRetries", "noRetries", "retryMaxElapsedTime", "timeout", "debug", "debugUnsafe", "headers", "credentials", "f", "cmd",
-		"format", "transform", "transformError", "formatError", "output", "includeHeaders",
+		"format", "transform", "transformError", "formatError", "output", "includeHeaders", "maxPages",
 	} {
 		vars.claim(v)
 	}
@@ -362,6 +363,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 		Path:        v.Path,
 		Multipart:   v.Multipart,
 		SecurityLit: securityLit(v.Security),
+		Pagination:  v.Pagination,
 	}
 	if vv.Short == "" {
 		vv.Short = v.Method + " " + v.Path

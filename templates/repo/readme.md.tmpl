@@ -44,6 +44,12 @@ go install {{.Module}}/cmd/{{.Binary}}@latest
 - `--output/-o <path>` — write the response body to a file instead of stdout. `-o auto` derives a filename from the response (Content-Disposition, else the URL) and won't clobber an existing file; `-o -` forces stdout.
 - `--include-headers` — print the response status and headers before the body.
 
+## Pagination
+
+Commands whose endpoint paginates walk every page for you and print the items as one result: no cursor juggling, no `--page` loop. `--max-pages N` bounds the walk; the default, `0`, walks to exhaustion. Streaming formats (`--format jsonl`, `--format raw`, and `auto` when piped) print each page's items as they arrive; the document formats accumulate them into one merged array.
+
+Which commands paginate is decided at generation time, by matching each endpoint against the schemes declared in `biscuit.yaml` plus a built-in library of the common conventions (cursor, offset/limit, page number, `Link` header). A command with no match fetches exactly one page. Run `biscuit generate --dry-run` to see which commands were matched.
+
 ## File arguments
 
 A body flag (including `--body`) starting with `@` reads from a file instead of taking the value literally: `@path` and `@file://path` read `path`, sniffing it as text (kept as-is) or binary (base64-encoded, since JSON has no raw-byte type). `@data://literal` passes `literal` through unchanged with no file read — useful when a real value happens to start with `@`. A leading `\@` also escapes to a literal `@`. Operations that take a file upload (`multipart/form-data`) send the file's raw bytes as its own part instead.

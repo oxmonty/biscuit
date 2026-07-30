@@ -30,6 +30,9 @@ func newGenerateCommand() *cobra.Command {
 			if err != nil {
 				return &usageError{err}
 			}
+			if err := mapping.ValidatePagination(cfg); err != nil {
+				return &usageError{err}
+			}
 			path, err := resolveSpecPath(cmd, specPath, cfg)
 			if err != nil {
 				return err
@@ -54,7 +57,7 @@ func newGenerateCommand() *cobra.Command {
 				return &qualityGateError{fmt.Sprintf("grade %d below lint.min_grade %d", report.Grade, cfg.Lint.MinGrade)}
 			}
 
-			api := mapping.Map(doc, mapping.OverridesFromConfig(cfg))
+			api := mapping.Map(doc, cfg)
 			sum := sha256.Sum256(doc.Bytes)
 			files, err := render.Render(api, cfg, render.Provenance{
 				SpecPath:   doc.Path,
@@ -141,6 +144,9 @@ func printCommands(out io.Writer, cmds []ir.Command, indent string, showFlags bo
 
 func printVerb(out io.Writer, v *ir.Verb, indent string, showFlags bool) {
 	suffix := fmt.Sprintf("(%d flag%s)", len(v.Flags), plural(len(v.Flags)))
+	if v.Pagination != nil {
+		suffix += " [paginated: " + v.Pagination.Scheme + "]"
+	}
 	if v.Deprecated {
 		suffix += " deprecated"
 	}
