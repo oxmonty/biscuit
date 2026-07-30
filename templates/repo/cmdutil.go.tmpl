@@ -5,13 +5,89 @@ package cmdutil
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"{{.Module}}/internal/client"
 	"{{.Module}}/internal/iostreams"
 )
+
+// Exit-code contract for generated CLIs: scripts and agents branch on
+// these, so they only ever grow — never renumber.
+const (
+	ExitOK       = 0
+	ExitInternal = 1
+	ExitUsage    = 2
+	ExitAuth     = 3
+	ExitAPIError = 4
+	ExitServer   = 5
+	ExitNetwork  = 6
+)
+
+// APIError marks a non-2xx HTTP response so ExitCode can classify it.
+type APIError struct{ Status int }
+
+func (e *APIError) Error() string { return fmt.Sprintf("API error: HTTP %d", e.Status) }
+
+// UsageError marks errors from flag parsing or malformed flag values.
+type UsageError struct{ Err error }
+
+func (e *UsageError) Error() string { return e.Err.Error() }
+func (e *UsageError) Unwrap() error { return e.Err }
+
+// ExitCode maps an error returned from the root command's Execute onto the
+// documented exit-code contract.
+func ExitCode(err error) int {
+	if err == nil {
+		return ExitOK
+	}
+	var usage *UsageError
+	if errors.As(err, &usage) {
+		return ExitUsage
+	}
+	var api *APIError
+	if errors.As(err, &api) {
+		switch {
+		case api.Status == http.StatusUnauthorized || api.Status == http.StatusForbidden:
+			return ExitAuth
+		case api.Status >= 500:
+			return ExitServer
+		case api.Status >= 400:
+			return ExitAPIError
+		}
+	}
+	var req *client.RequestError
+	if errors.As(err, &req) {
+		return ExitNetwork
+	}
+	// ponytail: cobra emits required-flag and unknown-command errors as
+	// plain fmt.Errorf, bypassing SetFlagErrorFunc; string-match is the
+	// ceiling until cobra types them.
+	if msg := err.Error(); strings.Contains(msg, "required flag(s)") || strings.HasPrefix(msg, "unknown command") {
+		return ExitUsage
+	}
+	return ExitInternal
+}
+
+// ParseHeaders parses repeated "Key: Value" --header flags into a header set.
+func ParseHeaders(raw []string) (http.Header, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	h := http.Header{}
+	for _, r := range raw {
+		k, v, ok := strings.Cut(r, ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid --header %q: want \"Key: Value\"", r)
+		}
+		h.Add(strings.TrimSpace(k), strings.TrimSpace(v))
+	}
+	return h, nil
+}
 
 // SetPath sets value at path inside nested maps, creating levels as needed.
 func SetPath(m map[string]any, path []string, value any) {
@@ -61,7 +137,7 @@ func PrintResponse(ios *iostreams.IOStreams, resp *client.Response) error {
 		}
 	}
 	if resp.Status >= 400 {
-		return fmt.Errorf("API error: HTTP %d", resp.Status)
+		return &APIError{Status: resp.Status}
 	}
 	return nil
 }

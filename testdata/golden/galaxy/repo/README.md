@@ -73,6 +73,18 @@ galaxy --help
 galaxy auth token create
 ```
 
+## Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Success |
+| 1 | Internal error |
+| 2 | Usage error (bad flags/arguments) |
+| 3 | Auth failure (HTTP 401/403) |
+| 4 | Other 4xx API error |
+| 5 | 5xx API error |
+| 6 | Network/transport error |
+
 ## Upgrade
 
 ```sh

@@ -2,6 +2,7 @@ package biscuit
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -87,14 +88,33 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 		t.Errorf("path substitution = %q, want /pets/42", echoed.Path)
 	}
 
-	// then: a missing required flag fails without touching the network
+	// then: a missing required flag fails without touching the network,
+	// exiting with the documented usage-error code
 	missing := exec.Command(cliBin, "pets", "show", "--base-url", srv.URL)
 	out, err = missing.CombinedOutput()
-	if err == nil {
-		t.Errorf("missing required flag succeeded:\n%s", out)
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("missing required flag: want *exec.ExitError, got %v\n%s", err, out)
+	}
+	if exitErr.ExitCode() != 2 {
+		t.Errorf("missing required flag exit code = %d, want 2 (usage)\n%s", exitErr.ExitCode(), out)
 	}
 	if !strings.Contains(string(out), "pet-id") {
 		t.Errorf("error does not name the missing flag:\n%s", out)
+	}
+
+	// then: --debug logs the request with the secret-shaped --header
+	// redacted, never the raw value
+	debug := exec.Command(cliBin, "pets", "list", "--debug", "--header", "X-Api-Key: sekrit", "--base-url", srv.URL)
+	out, err = debug.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets list --debug: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "X-Api-Key: [REDACTED]") {
+		t.Errorf("--debug output missing redacted header:\n%s", out)
+	}
+	if strings.Contains(string(out), "sekrit") {
+		t.Errorf("--debug output leaked the secret header value:\n%s", out)
 	}
 
 	// then: help surfaces show the quickstart on bare invocation

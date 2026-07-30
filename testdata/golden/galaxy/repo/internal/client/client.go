@@ -2,23 +2,95 @@
 
 // Package client is the generated API client: one method per operation over
 // plain net/http. Its exported surface is the stable contract that code under
-// internal/custom/ may depend on — later regenerations deepen behavior (auth,
-// retries, pagination) behind these same signatures.
+// internal/custom/ may depend on — later regenerations deepen behavior
+// (auth, pagination) behind these same signatures.
 package client
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
+
+const (
+	retryBaseDelay = 500 * time.Millisecond
+	retryCap       = 8 * time.Second
+	redacted       = "[REDACTED]"
+)
+
+var redactedHeaders = map[string]bool{
+	"authorization":       true,
+	"proxy-authorization": true,
+	"cookie":              true,
+	"set-cookie":          true,
+}
+
+// secretSegments are lowercase name segments (split on "-", "_", ".") that
+// alone mark a header name or JSON key as secret-shaped.
+var secretSegments = map[string]bool{
+	"token": true, "secret": true, "password": true, "auth": true,
+	"authorization": true, "apikey": true, "accesskey": true, "clientsecret": true,
+}
+
+// secretSegmentPairs are adjacent segments that only read as secret-shaped
+// concatenated, e.g. "api"+"key" from "X-Api-Key" or "openai_api_key".
+var secretSegmentPairs = map[string]bool{
+	"apikey": true, "accesskey": true, "clientsecret": true, "apitoken": true,
+	"accesstoken": true, "authtoken": true, "sessiontoken": true,
+	"privatekey": true, "secretkey": true,
+}
+
+// isSecretField reports whether a header name or JSON key looks like it
+// carries a secret. Case-insensitive; splits on common separators so
+// "X-Api-Key", "apiKey" (already one word once lowercased), and
+// "openai_api_key" all match, while an unrelated compound like "NextToken"
+// (one word, no separator) does not.
+func isSecretField(name string) bool {
+	segments := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	})
+	for i, s := range segments {
+		if secretSegments[s] {
+			return true
+		}
+		if i > 0 && secretSegmentPairs[segments[i-1]+s] {
+			return true
+		}
+	}
+	return false
+}
 
 // Client calls Scalar Galaxy.
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client // nil means http.DefaultClient
+
+	// MaxRetries bounds retry attempts for 429/5xx/network failures; the
+	// Client zero value means no retries.
+	MaxRetries int
+	// RetryMaxElapsedTime caps total time spent sleeping between retries;
+	// zero means no cap beyond MaxRetries.
+	RetryMaxElapsedTime time.Duration
+	// Timeout bounds one logical request end to end, retries included;
+	// zero means no deadline beyond ctx's own.
+	Timeout time.Duration
+
+	// Header is merged into every request after per-operation headers, so
+	// it wins on key collisions.
+	Header http.Header
+
+	Debug       bool
+	DebugUnsafe bool      // disables --debug redaction
+	DebugOut    io.Writer // where --debug logs request/response; nil disables logging
 }
 
 // Response is one API response with the body fully read.
@@ -28,42 +100,246 @@ type Response struct {
 	Body   []byte
 }
 
-// ponytail: naive transport — no auth, retries, or pagination yet, and bodies
-// always go out as JSON; the execution layer upgrades do() without touching
-// any operation signature.
+// RequestError marks a transport-level failure (DNS, connection refused,
+// timeout) so callers can map it onto a distinct exit code from HTTP error
+// responses, which do() returns as an ordinary *Response instead.
+type RequestError struct{ Err error }
+
+func (e *RequestError) Error() string { return e.Err.Error() }
+func (e *RequestError) Unwrap() error { return e.Err }
+
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte) (*Response, error) {
 	u := strings.TrimSuffix(c.BaseURL, "/") + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
-	var rd io.Reader
-	if body != nil {
-		rd = bytes.NewReader(body)
+
+	if c.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
+		defer cancel()
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, rd)
-	if err != nil {
-		return nil, err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+
+	reqHeader := http.Header{}
 	for k, vs := range header {
 		for _, v := range vs {
-			req.Header.Add(k, v)
+			reqHeader.Add(k, v)
 		}
 	}
+	for k, vs := range c.Header {
+		reqHeader.Del(k)
+		for _, v := range vs {
+			reqHeader.Add(k, v)
+		}
+	}
+
 	hc := c.HTTPClient
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, err
+
+	start := time.Now()
+	var lastResp *Response
+	var lastErr error
+retryLoop:
+	for attempt := 0; ; attempt++ {
+		var rd io.Reader
+		if body != nil {
+			rd = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, rd)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, vs := range reqHeader {
+			req.Header[k] = append([]string(nil), vs...)
+		}
+		c.logRequest(req, body)
+
+		resp, err := hc.Do(req)
+		switch {
+		case err != nil:
+			c.logError(err)
+			lastResp, lastErr = nil, err
+			if attempt >= c.MaxRetries || ctx.Err() != nil {
+				return nil, &RequestError{Err: err}
+			}
+		default:
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				lastResp, lastErr = nil, rerr
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				break
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b}
+			c.logResponse(resp, b)
+			lastResp, lastErr = result, nil
+			retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+			if !retryable || attempt >= c.MaxRetries || ctx.Err() != nil {
+				return result, nil
+			}
+		}
+
+		delay := backoffDelay(attempt)
+		if lastResp != nil {
+			if ra, ok := retryAfterDelay(lastResp.Header); ok && ra > delay {
+				delay = ra
+			}
+		}
+		if c.RetryMaxElapsedTime > 0 && time.Since(start)+delay > c.RetryMaxElapsedTime {
+			break retryLoop
+		}
+		select {
+		case <-ctx.Done():
+			break retryLoop
+		case <-time.After(delay):
+		}
 	}
-	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+
+	if lastResp != nil {
+		return lastResp, nil
 	}
-	return &Response{Status: resp.StatusCode, Header: resp.Header, Body: b}, nil
+	return nil, &RequestError{Err: lastErr}
+}
+
+// backoffDelay is jittered exponential backoff: base 500ms, factor 2, capped
+// at 8s, full jitter over [0, cap).
+func backoffDelay(attempt int) time.Duration {
+	d := retryBaseDelay
+	for i := 0; i < attempt && d < retryCap; i++ {
+		d *= 2
+	}
+	if d > retryCap {
+		d = retryCap
+	}
+	return time.Duration(rand.Int64N(int64(d))) + 1
+}
+
+// retryAfterDelay parses a Retry-After response header in either its
+// delay-seconds or HTTP-date form.
+func retryAfterDelay(h http.Header) (time.Duration, bool) {
+	v := h.Get("Retry-After")
+	if v == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			return 0, false
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d, true
+		}
+	}
+	return 0, false
+}
+
+func (c *Client) logRequest(req *http.Request, body []byte) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "--> %s %s\n", req.Method, c.redactedURL(req.URL))
+	c.logHeader(req.Header)
+	if len(body) > 0 {
+		_, _ = c.DebugOut.Write(c.redactBody(body))
+		_, _ = fmt.Fprintln(c.DebugOut)
+	}
+}
+
+func (c *Client) logResponse(resp *http.Response, body []byte) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "<-- %s\n", resp.Status)
+	c.logHeader(resp.Header)
+	if len(body) > 0 {
+		_, _ = c.DebugOut.Write(c.redactBody(body))
+		_, _ = fmt.Fprintln(c.DebugOut)
+	}
+}
+
+func (c *Client) logError(err error) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "<-- error: %s\n", err)
+}
+
+func (c *Client) logHeader(h http.Header) {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := strings.Join(h[k], ", ")
+		if !c.DebugUnsafe && (redactedHeaders[strings.ToLower(k)] || isSecretField(k)) {
+			v = redacted
+		}
+		_, _ = fmt.Fprintf(c.DebugOut, "%s: %s\n", k, v)
+	}
+}
+
+// redactedURL renders u for the debug log with secret-shaped query param
+// values replaced; the real request's URL is never mutated.
+func (c *Client) redactedURL(u *url.URL) string {
+	if c.DebugUnsafe || u.RawQuery == "" {
+		return u.String()
+	}
+	q := u.Query()
+	for k := range q {
+		if isSecretField(k) || strings.EqualFold(k, "key") {
+			for i := range q[k] {
+				q[k][i] = redacted
+			}
+		}
+	}
+	cp := *u
+	cp.RawQuery = q.Encode()
+	return cp.String()
+}
+
+// redactBody replaces secret-shaped JSON object keys with a redaction
+// marker; non-JSON bodies are logged unchanged since there is no structure
+// to redact within.
+func (c *Client) redactBody(body []byte) []byte {
+	if c.DebugUnsafe {
+		return body
+	}
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return body
+	}
+	redactJSONValue(v)
+	out, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func redactJSONValue(v any) {
+	switch val := v.(type) {
+	case map[string]any:
+		for k, vv := range val {
+			if isSecretField(k) {
+				val[k] = redacted
+				continue
+			}
+			redactJSONValue(vv)
+		}
+	case []any:
+		for _, vv := range val {
+			redactJSONValue(vv)
+		}
+	}
 }

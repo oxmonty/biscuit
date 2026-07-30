@@ -4,9 +4,12 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 
 	"github.com/oxmonty/galaxy-cli/internal/client"
+	"github.com/oxmonty/galaxy-cli/internal/cmdutil"
 	"github.com/oxmonty/galaxy-cli/internal/factory"
 	"github.com/oxmonty/galaxy-cli/internal/iostreams"
 	auth "github.com/oxmonty/galaxy-cli/pkg/cmd/auth"
@@ -20,8 +23,32 @@ import (
 func NewRootCmd(version string) *cobra.Command {
 	f := &factory.Factory{IOStreams: iostreams.System()}
 	var baseURL string
+	var maxRetries int
+	var noRetries bool
+	var retryMaxElapsedTime time.Duration
+	var timeout time.Duration
+	var debug bool
+	var debugUnsafe bool
+	var headers []string
 	f.Client = func() (*client.Client, error) {
-		return &client.Client{BaseURL: baseURL}, nil
+		h, err := cmdutil.ParseHeaders(headers)
+		if err != nil {
+			return nil, &cmdutil.UsageError{Err: err}
+		}
+		retries := maxRetries
+		if noRetries {
+			retries = 0
+		}
+		return &client.Client{
+			BaseURL:             baseURL,
+			MaxRetries:          retries,
+			RetryMaxElapsedTime: retryMaxElapsedTime,
+			Timeout:             timeout,
+			Header:              h,
+			Debug:               debug,
+			DebugUnsafe:         debugUnsafe,
+			DebugOut:            f.IOStreams.ErrOut,
+		}, nil
 	}
 	cmd := &cobra.Command{
 		Use:          "galaxy",
@@ -30,7 +57,17 @@ func NewRootCmd(version string) *cobra.Command {
 		Version:      version,
 		SilenceUsage: true,
 	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &cmdutil.UsageError{Err: err}
+	})
 	cmd.PersistentFlags().StringVar(&baseURL, "base-url", "https://galaxy.scalar.com", "API base URL")
+	cmd.PersistentFlags().IntVar(&maxRetries, "max-retries", 2, "maximum retry attempts for 429/5xx/network errors")
+	cmd.PersistentFlags().BoolVar(&noRetries, "no-retries", false, "disable retries")
+	cmd.PersistentFlags().DurationVar(&retryMaxElapsedTime, "retry-max-elapsed-time", 60*time.Second, "total time budget for retry backoff")
+	cmd.PersistentFlags().DurationVar(&timeout, "timeout", 10*time.Minute, "per-request timeout, retries included")
+	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log full request/response to stderr, secrets redacted")
+	cmd.PersistentFlags().BoolVar(&debugUnsafe, "debug-unsafe", false, "disable --debug redaction")
+	cmd.PersistentFlags().StringArrayVar(&headers, "header", nil, `extra header to send with every request ("Key: Value"), repeatable`)
 	cmd.AddCommand(auth.NewCmdAuth(f))
 	cmd.AddCommand(celestialbodies.NewCmdCelestialBodies(f))
 	cmd.AddCommand(me.NewCmdMe(f))

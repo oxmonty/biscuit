@@ -132,7 +132,7 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	if len(api.Servers) > 0 {
 		// ponytail: servers are URL-sorted in the IR, so this is the first
 		// alphabetically, not the spec's primary; output.base_url if it matters
-		baseURL = api.Servers[0].URL
+		baseURL = substituteServerVariables(api.Servers[0])
 	}
 
 	description := cfg.Output.Description
@@ -334,6 +334,17 @@ func pathExpr(path string, pathFlags []*flagView) string {
 		parts = append(parts, fmt.Sprintf("%q", rest))
 	}
 	return strings.Join(parts, " + ")
+}
+
+// substituteServerVariables fills a server URL template's {name} placeholders
+// with each variable's default value, e.g. "{region}.api.example.com" ->
+// "us-east.api.example.com".
+func substituteServerVariables(s ir.Server) string {
+	url := s.URL
+	for _, v := range s.Variables {
+		url = strings.ReplaceAll(url, "{"+v.Name+"}", v.Default)
+	}
+	return url
 }
 
 func goStringSliceLit(ss []string) string {

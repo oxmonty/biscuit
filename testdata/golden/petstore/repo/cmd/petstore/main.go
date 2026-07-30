@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 
+	"github.com/oxmonty/petstore-cli/internal/cmdutil"
 	"github.com/oxmonty/petstore-cli/pkg/cmd"
 )
 
@@ -12,7 +13,6 @@ import (
 var version = "dev"
 
 func main() {
-	if err := cmd.NewRootCmd(version).Execute(); err != nil {
-		os.Exit(1)
-	}
+	err := cmd.NewRootCmd(version).Execute()
+	os.Exit(cmdutil.ExitCode(err))
 }

@@ -78,6 +78,15 @@ type UnionVariant struct {
 type Server struct {
 	URL         string
 	Description string
+	Variables   []ServerVariable // sorted by Name
+}
+
+// ServerVariable is one servers[].variables entry — its Default substitutes
+// into the URL template for the generated --base-url default.
+type ServerVariable struct {
+	Name    string
+	Default string
+	Enum    []string
 }
 
 type Tag struct {

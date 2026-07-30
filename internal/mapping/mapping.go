@@ -53,7 +53,14 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	}
 
 	for _, s := range m.Servers {
-		api.Servers = append(api.Servers, ir.Server{URL: s.URL, Description: s.Description})
+		srv := ir.Server{URL: s.URL, Description: s.Description}
+		if s.Variables != nil {
+			for name, v := range s.Variables.FromOldest() {
+				srv.Variables = append(srv.Variables, ir.ServerVariable{Name: name, Default: v.Default, Enum: v.Enum})
+			}
+			sort.Slice(srv.Variables, func(i, j int) bool { return srv.Variables[i].Name < srv.Variables[j].Name })
+		}
+		api.Servers = append(api.Servers, srv)
 	}
 	sort.Slice(api.Servers, func(i, j int) bool { return api.Servers[i].URL < api.Servers[j].URL })
 
