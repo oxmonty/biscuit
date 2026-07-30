@@ -1,0 +1,20 @@
+# E4: Repo scaffolding
+
+`biscuit generate` emits a complete repo that builds and releases. `v0.1.0-alpha.7` → [Generated repo structure](../../PRD.md#generated-repo-structure), [Distribution](../../PRD.md#distribution), [Regeneration safety](../../PRD.md#regeneration-safety)
+
+Write-up: [docs/write-ups/E4-repo-scaffolding.md](../write-ups/E4-repo-scaffolding.md)
+
+## Stories
+
+- [x] Render the full template tree with generated-file markers and `internal/custom/`, defining the stable surface custom code may depend on.
+- [x] Emit goreleaser, release-please, and Homebrew tap configuration (proven in E1), including the two-channel prerelease policy: stable cask with `skip_upload: auto` + `{name}@next` cask mirroring the npm `next` dist-tag — one prerelease channel for any maturity (alpha/beta/rc live in the version string) — and the release job's dedicated cross-compile build cache (proven on biscuit; see [CI/CD](../../PRD.md#cicd)).
+- [x] Generate README (documenting the Homebrew 6 tap-trust step), shell completions (bash/zsh/fish/PowerShell), and man pages.
+- [x] Ship biscuit's own man pages and packaged shell completions (cobra's generators, bundled into release archives and casks so `man biscuit` works post-install) — proving the mechanics the story above templates into generated repos.
+- [x] Template the Makefile into generated repos (proven on biscuit's own): sectioned awk help headed by the binary name with the description on the line beneath it, sourced from the spec (`info.title`/`info.description` via the IR, `biscuit.yaml` overrides winning, lines omitted when the spec has neither), with build/run/check/lint/bench/snapshot/gacp targets mapped to the generated project.
+- [x] Ship channel-aware `biscuit upgrade` (alias `update` — synonyms in the wild) and template the same command into generated CLIs: detect the install channel (brew/npm/bare binary) and release channel (stable vs next), exec the package manager's own upgrade, self-swap only bare binaries; `--channel` and `--version` for explicit channel crossing and exact pins. → [Distribution](../../PRD.md#distribution)
+- [x] Harden biscuit's own `install.sh` ahead of templating: checksum verification against the release's `checksums.txt`, a clear error on a bad `--version`, and a `--binary <path>` local-install override for testing.
+- [x] Template `install.sh` (proven on biscuit's own, adapted from [opencode's](https://github.com/sst/opencode), MIT) into generated repos as a third distribution channel alongside brew/npm — installs to `~/.{binary}/bin`, `--channel`/`--version` flags mirroring `upgrade`'s, invoked as `curl -fsSL https://raw.githubusercontent.com/<org>/<repo>/main/install.sh | sh`. → [Distribution](../../PRD.md#distribution)
+- [x] Add the quickstart-in-help pattern to generated CLIs via `root.Long`: spec-derived description (same `biscuit.yaml`-overrides-first rule as the Makefile) plus quickstart lines specific to the generated command tree, shown on `{binary} help`/`--help`/`-h` and bare invocation alike through cobra's default template. → [Distribution](../../PRD.md#distribution)
+- [x] Generate SETUP.md documenting the one-time human publishing steps proven on biscuit itself: tap repo + contents-write PAT, org "allow Actions to create PRs" setting, npm 2FA, first-publish-is-local (OIDC needs an existing package), `npm trust` for the trusted-publisher config.
+- [x] Template a Claude Code skill (.claude/skills/setup-publishing) into generated repos: agent verifies the checkable setup via gh/npm (tap repo, secrets, org Actions setting, trusted publishers), runs the local bootstrap publish, and hands the user only the true browser steps with exact URLs and field values. SETUP.md stays as the human-readable fallback. (v1 lives in biscuit's own .claude/skills/setup-publishing — template it from there.)
+- [x] Add compile-the-output CI (`go build ./...` on generated golden repos), including one repo with a representative `internal/custom/` file so contract drift fails in biscuit's CI.
