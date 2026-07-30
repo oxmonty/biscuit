@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/ir"
+	"github.com/oxmonty/biscuit/internal/mapping"
 )
 
 // The view model precomputes every name, expression, and branch the templates
@@ -38,6 +40,9 @@ type repoModel struct {
 	AllResources []*resourceView // every node, depth-first — one output file each
 	RootVerbs    []*verbView
 	Ops          []*verbView // every verb incl. root verbs, in Ident-claim order
+
+	Security           []*securityView // securitySchemes, sorted by Name
+	SecurityWireParams []string        // apiKey scheme Param names, lowercased and deduped, for redaction
 
 	// ManPages lists every page cobra's GenManTree emits for the generated
 	// tree ({binary}-{chain}-{verb}.1), sorted — the cask manpage stanzas
@@ -74,6 +79,22 @@ type verbView struct {
 	HeadFlags  []*flagView
 	BodyFlags  []*flagView // structured dot-notation body flags
 	WholeBody  *flagView   // the single opaque body flag, when the body didn't flatten
+
+	SecurityLit string // Go [][]string literal: this verb's security OR-list, passed to Client.do
+}
+
+// securityView is one components/securitySchemes entry's generated shape:
+// the root flag and env var that resolve its credential, plus the wire
+// details the client needs to apply it.
+type securityView struct {
+	Name       string // key in components/securitySchemes
+	Flag       string // kebab root flag name
+	VarName    string // Go local var in root.go holding the flag value
+	EnvVar     string // {BINARY}_{SCHEME} upper-snake env var
+	Type       string // apiKey | http | oauth2 | openIdConnect
+	HTTPScheme string // http only: bearer, basic, ...
+	In         string // apiKey only: header | query | cookie
+	Param      string // apiKey only: the header/query/cookie name
 }
 
 type flagView struct {
@@ -166,6 +187,9 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		RepoName:      repo,
 	}
 
+	m.Security = m.buildSecurity(api.Security)
+	m.SecurityWireParams = wireParams(m.Security)
+
 	idents := identSet{}
 	// pkg/cmd/upgrade.go always declares newUpgradeCmd; claiming it here
 	// forces a spec operation that would derive the same Ident to Upgrade2
@@ -185,6 +209,92 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	return m
 }
 
+// buildSecurity turns each components/securitySchemes entry into its
+// generated root flag, env var, and Go local var name. Flag and var names
+// are claimed against root.go.tmpl's own fixed identifiers so a scheme name
+// like "header" can never collide with the persistent --header flag.
+func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
+	if len(schemes) == 0 {
+		return nil
+	}
+	flags := identSet{}
+	for _, f := range []string{"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header"} {
+		flags.claim(f)
+	}
+	vars := identSet{}
+	for _, v := range []string{"baseURL", "maxRetries", "noRetries", "retryMaxElapsedTime", "timeout", "debug", "debugUnsafe", "headers", "credentials", "f", "cmd"} {
+		vars.claim(v)
+	}
+	out := make([]*securityView, 0, len(schemes))
+	for _, s := range schemes {
+		kebabName := mapping.Kebab(s.Name)
+		out = append(out, &securityView{
+			Name:       s.Name,
+			Flag:       flags.claim(kebabName),
+			VarName:    vars.claim(lowerCamel(kebabName)),
+			EnvVar:     upperSnake(m.Binary) + "_" + upperSnake(kebabName),
+			Type:       s.Type,
+			HTTPScheme: s.Scheme,
+			In:         s.In,
+			Param:      s.Param,
+		})
+	}
+	return out
+}
+
+// wireParams collects apiKey schemes' Param names for the redaction set,
+// lowercased and deduped — multiple schemes commonly reuse the same wire
+// name (e.g. an "api_key" query param and cookie), which would otherwise
+// emit a duplicate map key into the generated literal.
+func wireParams(schemes []*securityView) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range schemes {
+		if s.Type != "apiKey" {
+			continue
+		}
+		lower := strings.ToLower(s.Param)
+		if !seen[lower] {
+			seen[lower] = true
+			out = append(out, lower)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// securityLit renders a verb's security OR-list as a Go [][]string literal
+// for the do() call; do() treats a "nil"-length result identically to a
+// declared-but-empty one, so nil is fine when the operation has none.
+func securityLit(reqs []ir.SecurityRequirement) string {
+	if len(reqs) == 0 {
+		return "nil"
+	}
+	alts := make([]string, len(reqs))
+	for i, r := range reqs {
+		quoted := make([]string, len(r.Schemes))
+		for j, s := range r.Schemes {
+			quoted[j] = fmt.Sprintf("%q", s)
+		}
+		alts[i] = "{" + strings.Join(quoted, ", ") + "}"
+	}
+	return "[][]string{" + strings.Join(alts, ", ") + "}"
+}
+
+func upperSnake(kebab string) string {
+	return strings.ToUpper(strings.ReplaceAll(kebab, "-", "_"))
+}
+
+func lowerCamel(kebab string) string {
+	s := goExported(kebab)
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToLower(r[0])
+	return string(r)
+}
+
 // buildLong composes root.Long: the same Tagline the Makefile shows, then a
 // short quickstart, then a docs link once the module resolves to a real
 // GitHub repo. Plain text — cobra prints it above Usage on help, --help, -h,
@@ -196,6 +306,9 @@ func (m *repoModel) buildLong() string {
 		b.WriteString("\n\n")
 	}
 	fmt.Fprintf(&b, "Quickstart:\n  %s %s\n  %s --help\n", m.Binary, m.ExampleUse(), m.Binary)
+	if len(m.Security) > 0 {
+		fmt.Fprintf(&b, "\nAuth: --%s or %s (see README)\n", m.Security[0].Flag, m.Security[0].EnvVar)
+	}
 	if m.RepoOwner != "OWNER" {
 		fmt.Fprintf(&b, "\nDocs: https://github.com/%s/%s", m.RepoOwner, m.RepoName)
 	}
@@ -232,13 +345,14 @@ func (m *repoModel) buildResource(c *ir.Command, chain []string, parentDir strin
 func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verbView {
 	m.ManPages = append(m.ManPages, m.Binary+"-"+strings.Join(append(append([]string(nil), chain...), v.Name), "-")+".1")
 	vv := &verbView{
-		Use:        v.Name,
-		Short:      firstLine(v.Summary),
-		Aliases:    v.Aliases,
-		Deprecated: v.Deprecated,
-		Ident:      idents.claim(goExported(append(append([]string(nil), chain...), v.Name)...)),
-		Method:     v.Method,
-		Path:       v.Path,
+		Use:         v.Name,
+		Short:       firstLine(v.Summary),
+		Aliases:     v.Aliases,
+		Deprecated:  v.Deprecated,
+		Ident:       idents.claim(goExported(append(append([]string(nil), chain...), v.Name)...)),
+		Method:      v.Method,
+		Path:        v.Path,
+		SecurityLit: securityLit(v.Security),
 	}
 	if vv.Short == "" {
 		vv.Short = v.Method + " " + v.Path

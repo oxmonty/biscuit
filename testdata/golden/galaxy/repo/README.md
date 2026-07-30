@@ -73,6 +73,20 @@ galaxy --help
 galaxy auth token create
 ```
 
+## Authentication
+
+| Scheme | Type | Flag | Env var |
+| ------ | ---- | ---- | ------- |
+| apiKeyCookie | apiKey | `--api-key-cookie` | `GALAXY_API_KEY_COOKIE` |
+| apiKeyHeader | apiKey | `--api-key-header` | `GALAXY_API_KEY_HEADER` |
+| apiKeyQuery | apiKey | `--api-key-query` | `GALAXY_API_KEY_QUERY` |
+| basicAuth | http (basic) | `--basic-auth` | `GALAXY_BASIC_AUTH` |
+| bearerAuth | http (bearer) | `--bearer-auth` | `GALAXY_BEARER_AUTH` |
+| oAuth2 | oauth2 | `--o-auth2` | `GALAXY_O_AUTH2` |
+| openIdConnect | openIdConnect | `--open-id-connect` | `GALAXY_OPEN_ID_CONNECT` |
+
+A flag takes precedence over its env var. `http basic` schemes take the credential as `user:pass`. `oauth2` and `openIdConnect` schemes expect a pre-obtained bearer token — this CLI does not perform an OAuth flow.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -80,7 +94,7 @@ galaxy auth token create
 | 0 | Success |
 | 1 | Internal error |
 | 2 | Usage error (bad flags/arguments) |
-| 3 | Auth failure (HTTP 401/403) |
+| 3 | Auth failure (HTTP 401/403, or a required credential not set) |
 | 4 | Other 4xx API error |
 | 5 | 5xx API error |
 | 6 | Network/transport error |

@@ -38,7 +38,7 @@ petstore pets create
 | 0 | Success |
 | 1 | Internal error |
 | 2 | Usage error (bad flags/arguments) |
-| 3 | Auth failure (HTTP 401/403) |
+| 3 | Auth failure (HTTP 401/403, or a required credential not set) |
 | 4 | Other 4xx API error |
 | 5 | 5xx API error |
 | 6 | Network/transport error |

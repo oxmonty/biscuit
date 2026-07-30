@@ -39,9 +39,10 @@ type Verb struct {
 	OperationID string // empty when the name was path-derived
 	Summary     string
 	Deprecated  bool
-	Aliases     []string // kebab-case, from overrides
-	Pagination  string   // pagination hint, from overrides
-	Flags       []Flag   // sorted by Name
+	Aliases     []string              // kebab-case, from overrides
+	Pagination  string                // pagination hint, from overrides
+	Flags       []Flag                // sorted by Name
+	Security    []SecurityRequirement // OR-list of alternatives; empty means no auth requirement
 }
 
 // Flag is one statically defined flag on a verb. Static definition is the
@@ -105,7 +106,15 @@ type Operation struct {
 	Params      []Param // sorted by (In, Name)
 	RequestBody []MediaType
 	Responses   []Response
-	XBiscuit    Override // x-biscuit-* extension values carried in-spec
+	XBiscuit    Override              // x-biscuit-* extension values carried in-spec
+	Security    []SecurityRequirement // OR-list of alternatives; empty means no auth requirement
+}
+
+// SecurityRequirement is one alternative (AND-set of scheme names) in an
+// operation's OR-list of acceptable security requirements. An alternative
+// with no schemes means the operation is satisfiable without auth.
+type SecurityRequirement struct {
+	Schemes []string // sorted scheme names
 }
 
 // Override adjusts how one operation maps into the command tree. It rides

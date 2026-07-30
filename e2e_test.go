@@ -125,6 +125,111 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 	}
 }
 
+// TestEndToEndGalaxyAuth pins the auth story end to end: galaxy.yaml is the
+// multi-securityScheme spec (petstore.yaml declares none), so this generates
+// galaxy-cli separately to prove a credential resolves from its env var onto
+// the wire, and that an operation requiring auth refuses to dial out at all
+// when no credential is configured.
+func TestEndToEndGalaxyAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e skipped in -short")
+	}
+
+	// given: a real biscuit binary and an echo server that also reports
+	// the headers it received
+	work := t.TempDir()
+	biscuitBin := filepath.Join(work, "biscuit")
+	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building biscuit: %v\n%s", err, out)
+	}
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"method": r.Method, "path": r.URL.Path, "authorization": r.Header.Get("Authorization"),
+		})
+	}))
+	defer srv.Close()
+
+	// when: generating galaxy-cli through the actual CLI — no config
+	// override, so the binary derives to "scalar-galaxy"
+	spec, err := filepath.Abs("testdata/specs/galaxy.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outDir := filepath.Join(work, "galaxy-cli")
+	gen := exec.Command(biscuitBin, "generate", "--spec", spec, "--out", outDir, "--quiet")
+	gen.Dir = work
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("biscuit generate: %v\n%s", err, out)
+	}
+
+	cliBin := filepath.Join(work, "scalar-galaxy")
+	if runtime.GOOS == "windows" {
+		cliBin += ".exe"
+	}
+	buildCLI := exec.Command("go", "build", "-o", cliBin, "./cmd/scalar-galaxy")
+	buildCLI.Dir = outDir
+	if out, err := buildCLI.CombinedOutput(); err != nil {
+		t.Fatalf("building generated CLI: %v\n%s", err, out)
+	}
+
+	// then: "planets delete" has no per-operation security override, so it
+	// inherits the spec's global requirement — a bearerAuth credential set
+	// only via its env var arrives as an Authorization header on the wire
+	del := exec.Command(cliBin, "planets", "delete", "--planet-id", "1", "--base-url", srv.URL)
+	del.Env = append(os.Environ(), "SCALAR_GALAXY_BEARER_AUTH=tok123")
+	out, err := del.CombinedOutput()
+	if err != nil {
+		t.Fatalf("planets delete with env auth: %v\n%s", err, out)
+	}
+	var echoed struct{ Method, Path, Authorization string }
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout is not the relayed response body: %q", out)
+	}
+	if echoed.Authorization != "Bearer tok123" {
+		t.Errorf("Authorization header = %q, want %q", echoed.Authorization, "Bearer tok123")
+	}
+	if requests != 1 {
+		t.Fatalf("requests reaching the server = %d, want 1", requests)
+	}
+
+	// then: the same operation with no credential configured anywhere
+	// fails closed — exit code 3, and the server never sees the request
+	noAuth := exec.Command(cliBin, "planets", "delete", "--planet-id", "1", "--base-url", srv.URL)
+	noAuth.Env = envWithoutPrefix(t, "SCALAR_GALAXY_")
+	out, err = noAuth.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("missing credential: want *exec.ExitError, got %v\n%s", err, out)
+	}
+	if exitErr.ExitCode() != 3 {
+		t.Errorf("missing credential exit code = %d, want 3 (auth)\n%s", exitErr.ExitCode(), out)
+	}
+	if !strings.Contains(string(out), "--bearer-auth") || !strings.Contains(string(out), "SCALAR_GALAXY_BEARER_AUTH") {
+		t.Errorf("error does not name a flag/env var to set:\n%s", out)
+	}
+	if requests != 1 {
+		t.Errorf("requests reaching the server = %d, want still 1 (no network I/O on missing auth)", requests)
+	}
+}
+
+// envWithoutPrefix returns the current environment with every variable
+// carrying prefix removed, so a missing-credential assertion can't be
+// contaminated by the developer's own shell already exporting one.
+func envWithoutPrefix(t *testing.T, prefix string) []string {
+	t.Helper()
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, prefix) {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
 // install.sh's offline suite rides go test so CI's single command runs it —
 // the shell script owns the assertions.
 func TestInstallScriptOfflineSuite(t *testing.T) {

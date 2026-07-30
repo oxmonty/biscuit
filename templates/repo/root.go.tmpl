@@ -33,6 +33,9 @@ func NewRootCmd(version string) *cobra.Command {
 	var debug bool
 	var debugUnsafe bool
 	var headers []string
+{{- range .Security}}
+	var {{.VarName}} string
+{{- end}}
 	f.Client = func() (*client.Client, error) {
 		h, err := cmdutil.ParseHeaders(headers)
 		if err != nil {
@@ -42,12 +45,23 @@ func NewRootCmd(version string) *cobra.Command {
 		if noRetries {
 			retries = 0
 		}
+{{- if .Security}}
+		credentials := map[string]string{}
+{{- range .Security}}
+		if v := cmdutil.ResolveCredential({{.VarName}}, {{q .EnvVar}}); v != "" {
+			credentials[{{q .Name}}] = v
+		}
+{{- end}}
+{{- end}}
 		return &client.Client{
 			BaseURL:              baseURL,
 			MaxRetries:           retries,
 			RetryMaxElapsedTime:  retryMaxElapsedTime,
 			Timeout:              timeout,
 			Header:               h,
+{{- if .Security}}
+			Credentials:          credentials,
+{{- end}}
 			Debug:                debug,
 			DebugUnsafe:          debugUnsafe,
 			DebugOut:             f.IOStreams.ErrOut,
@@ -71,6 +85,9 @@ func NewRootCmd(version string) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log full request/response to stderr, secrets redacted")
 	cmd.PersistentFlags().BoolVar(&debugUnsafe, "debug-unsafe", false, "disable --debug redaction")
 	cmd.PersistentFlags().StringArrayVar(&headers, "header", nil, `extra header to send with every request ("Key: Value"), repeatable`)
+{{- range .Security}}
+	cmd.PersistentFlags().StringVar(&{{.VarName}}, {{q .Flag}}, "", "credential for the {{.Name}} security scheme (env {{.EnvVar}})")
+{{- end}}
 {{- range .Resources}}
 	cmd.AddCommand({{.ImportAlias}}.NewCmd{{.Ident}}(f))
 {{- end}}

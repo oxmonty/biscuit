@@ -69,16 +69,17 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	}
 	sort.Slice(api.Tags, func(i, j int) bool { return api.Tags[i].Name < api.Tags[j].Name })
 
+	globalSecurity := mapSecurity(m.Security)
 	if m.Paths != nil {
 		for path, item := range m.Paths.PathItems.FromOldest() {
-			api.Operations = append(api.Operations, mapPathItem(path, item)...)
+			api.Operations = append(api.Operations, mapPathItem(path, item, globalSecurity)...)
 		}
 	}
 	sortOperations(api.Operations)
 
 	if m.Webhooks != nil {
 		for name, item := range m.Webhooks.FromOldest() {
-			api.Webhooks = append(api.Webhooks, mapPathItem(name, item)...)
+			api.Webhooks = append(api.Webhooks, mapPathItem(name, item, globalSecurity)...)
 		}
 	}
 	sortOperations(api.Webhooks)
@@ -108,6 +109,40 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	return api
 }
 
+// mapSecurity converts one operation's (or the document's global) security
+// requirement OR-list into the IR shape: each alternative's scheme names
+// sorted, and the alternatives themselves sorted (shortest, then lexical)
+// so generated output is deterministic regardless of spec authoring order.
+func mapSecurity(reqs []*base.SecurityRequirement) []ir.SecurityRequirement {
+	if reqs == nil {
+		return nil
+	}
+	out := make([]ir.SecurityRequirement, 0, len(reqs))
+	for _, r := range reqs {
+		var schemes []string
+		if r.Requirements != nil {
+			for name := range r.Requirements.FromOldest() {
+				schemes = append(schemes, name)
+			}
+		}
+		sort.Strings(schemes)
+		out = append(out, ir.SecurityRequirement{Schemes: schemes})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Schemes, out[j].Schemes
+		if len(a) != len(b) {
+			return len(a) < len(b)
+		}
+		for k := range a {
+			if a[k] != b[k] {
+				return a[k] < b[k]
+			}
+		}
+		return false
+	})
+	return out
+}
+
 func sortOperations(ops []ir.Operation) {
 	sort.Slice(ops, func(i, j int) bool {
 		if ops[i].Path != ops[j].Path {
@@ -117,7 +152,7 @@ func sortOperations(ops []ir.Operation) {
 	})
 }
 
-func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
+func mapPathItem(path string, item *v3.PathItem, globalSecurity []ir.SecurityRequirement) []ir.Operation {
 	var ops []ir.Operation
 	for method, op := range item.GetOperations().FromOldest() {
 		mapped := ir.Operation{
@@ -127,6 +162,12 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 			Summary:     op.Summary,
 			Description: op.Description,
 			Deprecated:  op.Deprecated != nil && *op.Deprecated,
+			Security:    globalSecurity,
+		}
+		// op.Security != nil (even an explicit empty []) overrides the global
+		// default entirely — the OpenAPI security-requirement-object contract.
+		if op.Security != nil {
+			mapped.Security = mapSecurity(op.Security)
 		}
 		mapped.Tags = append(mapped.Tags, op.Tags...)
 		sort.Strings(mapped.Tags)

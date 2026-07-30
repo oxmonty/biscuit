@@ -17,7 +17,7 @@ type AuthTokenCreateRequest struct {
 
 // AuthTokenCreate calls POST /auth/token. Get a token
 func (c *Client) AuthTokenCreate(ctx context.Context, req *AuthTokenCreateRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/auth/token", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/auth/token", req.Query, req.Header, req.Body, nil)
 }
 
 // CelestialBodiesCreateRequest carries the inputs of POST /celestial-bodies.
@@ -29,7 +29,7 @@ type CelestialBodiesCreateRequest struct {
 
 // CelestialBodiesCreate calls POST /celestial-bodies. Create a celestial body
 func (c *Client) CelestialBodiesCreate(ctx context.Context, req *CelestialBodiesCreateRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/celestial-bodies", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/celestial-bodies", req.Query, req.Header, req.Body, [][]string{{"apiKeyCookie"}, {"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"openIdConnect"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // MeListRequest carries the inputs of GET /me.
@@ -41,7 +41,7 @@ type MeListRequest struct {
 
 // MeList calls GET /me. Get authenticated user
 func (c *Client) MeList(ctx context.Context, req *MeListRequest) (*Response, error) {
-	return c.do(ctx, "GET", "/me", req.Query, req.Header, req.Body)
+	return c.do(ctx, "GET", "/me", req.Query, req.Header, req.Body, [][]string{{"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // PlanetsCreateRequest carries the inputs of POST /planets.
@@ -53,7 +53,7 @@ type PlanetsCreateRequest struct {
 
 // PlanetsCreate calls POST /planets. Create a planet
 func (c *Client) PlanetsCreate(ctx context.Context, req *PlanetsCreateRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/planets", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/planets", req.Query, req.Header, req.Body, [][]string{{"apiKeyCookie"}, {"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"openIdConnect"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // PlanetsDeleteRequest carries the inputs of DELETE /planets/{planetId}.
@@ -66,7 +66,7 @@ type PlanetsDeleteRequest struct {
 
 // PlanetsDelete calls DELETE /planets/{planetId}. Delete a planet
 func (c *Client) PlanetsDelete(ctx context.Context, req *PlanetsDeleteRequest) (*Response, error) {
-	return c.do(ctx, "DELETE", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body)
+	return c.do(ctx, "DELETE", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body, [][]string{{"apiKeyCookie"}, {"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"openIdConnect"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // PlanetsGetRequest carries the inputs of GET /planets/{planetId}.
@@ -79,7 +79,7 @@ type PlanetsGetRequest struct {
 
 // PlanetsGet calls GET /planets/{planetId}. Get a planet
 func (c *Client) PlanetsGet(ctx context.Context, req *PlanetsGetRequest) (*Response, error) {
-	return c.do(ctx, "GET", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body)
+	return c.do(ctx, "GET", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body, nil)
 }
 
 // PlanetsGetAllDataRequest carries the inputs of GET /planets.
@@ -91,7 +91,7 @@ type PlanetsGetAllDataRequest struct {
 
 // PlanetsGetAllData calls GET /planets. Get all planets
 func (c *Client) PlanetsGetAllData(ctx context.Context, req *PlanetsGetAllDataRequest) (*Response, error) {
-	return c.do(ctx, "GET", "/planets", req.Query, req.Header, req.Body)
+	return c.do(ctx, "GET", "/planets", req.Query, req.Header, req.Body, nil)
 }
 
 // PlanetsImageRequest carries the inputs of POST /planets/{planetId}/image.
@@ -104,7 +104,7 @@ type PlanetsImageRequest struct {
 
 // PlanetsImage calls POST /planets/{planetId}/image. Upload an image to a planet
 func (c *Client) PlanetsImage(ctx context.Context, req *PlanetsImageRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/planets/"+url.PathEscape(req.PlanetId)+"/image", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/planets/"+url.PathEscape(req.PlanetId)+"/image", req.Query, req.Header, req.Body, [][]string{{"apiKeyCookie"}, {"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"openIdConnect"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // PlanetsUpdateRequest carries the inputs of PUT /planets/{planetId}.
@@ -117,7 +117,7 @@ type PlanetsUpdateRequest struct {
 
 // PlanetsUpdate calls PUT /planets/{planetId}. Update a planet
 func (c *Client) PlanetsUpdate(ctx context.Context, req *PlanetsUpdateRequest) (*Response, error) {
-	return c.do(ctx, "PUT", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body)
+	return c.do(ctx, "PUT", "/planets/"+url.PathEscape(req.PlanetId), req.Query, req.Header, req.Body, [][]string{{"apiKeyCookie"}, {"apiKeyHeader"}, {"apiKeyQuery"}, {"basicAuth"}, {"bearerAuth"}, {"oAuth2"}, {"openIdConnect"}, {"apiKeyHeader", "apiKeyQuery"}})
 }
 
 // UserSignupCreateRequest carries the inputs of POST /user/signup.
@@ -129,5 +129,5 @@ type UserSignupCreateRequest struct {
 
 // UserSignupCreate calls POST /user/signup. Create a user
 func (c *Client) UserSignupCreate(ctx context.Context, req *UserSignupCreateRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/user/signup", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/user/signup", req.Query, req.Header, req.Body, nil)
 }

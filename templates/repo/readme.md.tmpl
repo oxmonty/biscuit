@@ -36,7 +36,17 @@ go install {{.Module}}/cmd/{{.Binary}}@latest
 {{.Binary}} --help
 {{.Binary}} {{.ExampleUse}}
 ```
+{{if .Security}}
+## Authentication
 
+| Scheme | Type | Flag | Env var |
+| ------ | ---- | ---- | ------- |
+{{- range .Security}}
+| {{.Name}} | {{.Type}}{{if .HTTPScheme}} ({{.HTTPScheme}}){{end}} | `--{{.Flag}}` | `{{.EnvVar}}` |
+{{- end}}
+
+A flag takes precedence over its env var. `http basic` schemes take the credential as `user:pass`. `oauth2` and `openIdConnect` schemes expect a pre-obtained bearer token — this CLI does not perform an OAuth flow.
+{{end}}
 ## Exit codes
 
 | Code | Meaning |
@@ -44,7 +54,7 @@ go install {{.Module}}/cmd/{{.Binary}}@latest
 | 0 | Success |
 | 1 | Internal error |
 | 2 | Usage error (bad flags/arguments) |
-| 3 | Auth failure (HTTP 401/403) |
+| 3 | Auth failure (HTTP 401/403, or a required credential not set) |
 | 4 | Other 4xx API error |
 | 5 | 5xx API error |
 | 6 | Network/transport error |

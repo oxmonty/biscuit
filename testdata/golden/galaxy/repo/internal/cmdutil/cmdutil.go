@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,10 @@ func ExitCode(err error) int {
 	if errors.As(err, &usage) {
 		return ExitUsage
 	}
+	var auth *client.AuthError
+	if errors.As(err, &auth) {
+		return ExitAuth
+	}
 	var api *APIError
 	if errors.As(err, &api) {
 		switch {
@@ -71,6 +76,15 @@ func ExitCode(err error) int {
 		return ExitUsage
 	}
 	return ExitInternal
+}
+
+// ResolveCredential returns flagValue if set, else the named env var — the
+// flag-over-env precedence for security-scheme credentials.
+func ResolveCredential(flagValue, envVar string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return os.Getenv(envVar)
 }
 
 // ParseHeaders parses repeated "Key: Value" --header flags into a header set.

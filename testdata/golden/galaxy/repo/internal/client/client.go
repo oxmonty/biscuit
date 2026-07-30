@@ -49,13 +49,25 @@ var secretSegmentPairs = map[string]bool{
 	"privatekey": true, "secretkey": true,
 }
 
+// securityWireParams are this spec's apiKey securityScheme header/query/cookie
+// names, exact-matched since a custom name (e.g. "sig") might not satisfy the
+// segment heuristic below.
+var securityWireParams = map[string]bool{
+	"api_key":   true,
+	"x-api-key": true,
+}
+
 // isSecretField reports whether a header name or JSON key looks like it
 // carries a secret. Case-insensitive; splits on common separators so
 // "X-Api-Key", "apiKey" (already one word once lowercased), and
 // "openai_api_key" all match, while an unrelated compound like "NextToken"
 // (one word, no separator) does not.
 func isSecretField(name string) bool {
-	segments := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+	lower := strings.ToLower(name)
+	if securityWireParams[lower] {
+		return true
+	}
+	segments := strings.FieldsFunc(lower, func(r rune) bool {
 		return r == '-' || r == '_' || r == '.'
 	})
 	for i, s := range segments {
@@ -88,6 +100,11 @@ type Client struct {
 	// it wins on key collisions.
 	Header http.Header
 
+	// Credentials holds resolved auth values keyed by securityScheme name
+	// (flag → env var precedence resolved by cmd/root.go); do() attaches
+	// them to the request per scheme's Type/In/Param.
+	Credentials map[string]string
+
 	Debug       bool
 	DebugUnsafe bool      // disables --debug redaction
 	DebugOut    io.Writer // where --debug logs request/response; nil disables logging
@@ -108,7 +125,17 @@ type RequestError struct{ Err error }
 func (e *RequestError) Error() string { return e.Err.Error() }
 func (e *RequestError) Unwrap() error { return e.Err }
 
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte) (*Response, error) {
+func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string) (*Response, error) {
+	if header == nil {
+		header = http.Header{}
+	}
+	if query == nil {
+		query = url.Values{}
+	}
+	if err := c.applyAuth(security, header, query); err != nil {
+		return nil, err
+	}
+
 	u := strings.TrimSuffix(c.BaseURL, "/") + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()

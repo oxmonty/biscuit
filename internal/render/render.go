@@ -71,6 +71,7 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 		{tmpl: "biscuit-state.yml.tmpl", path: ".biscuit-state.yml", data: m},
 		{tmpl: "main.go.tmpl", path: "cmd/" + m.Binary + "/main.go", data: m, goSource: true},
 		{tmpl: "client.go.tmpl", path: "internal/client/client.go", data: m, goSource: true},
+		{tmpl: "security.go.tmpl", path: "internal/client/security.go", data: m, goSource: true},
 		{tmpl: "operations.go.tmpl", path: "internal/client/operations.go", data: m, goSource: true},
 		{tmpl: "cmdutil.go.tmpl", path: "internal/cmdutil/cmdutil.go", data: m, goSource: true},
 		{tmpl: "iostreams.go.tmpl", path: "internal/iostreams/iostreams.go", data: m, goSource: true},
