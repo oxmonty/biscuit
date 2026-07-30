@@ -218,11 +218,17 @@ func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
 		return nil
 	}
 	flags := identSet{}
-	for _, f := range []string{"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header"} {
+	for _, f := range []string{
+		"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header",
+		"format", "transform", "transform-error", "format-error", "output", "include-headers",
+	} {
 		flags.claim(f)
 	}
 	vars := identSet{}
-	for _, v := range []string{"baseURL", "maxRetries", "noRetries", "retryMaxElapsedTime", "timeout", "debug", "debugUnsafe", "headers", "credentials", "f", "cmd"} {
+	for _, v := range []string{
+		"baseURL", "maxRetries", "noRetries", "retryMaxElapsedTime", "timeout", "debug", "debugUnsafe", "headers", "credentials", "f", "cmd",
+		"format", "transform", "transformError", "formatError", "output", "includeHeaders",
+	} {
 		vars.claim(v)
 	}
 	out := make([]*securityView, 0, len(schemes))

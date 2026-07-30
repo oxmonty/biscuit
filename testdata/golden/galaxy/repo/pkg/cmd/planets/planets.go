@@ -162,7 +162,7 @@ func newPlanetsCreateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().StringArray("atmosphere", nil, "Atmospheric composition")
@@ -210,7 +210,7 @@ func newPlanetsDeleteCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().Int64("planet-id", 0, "The ID of the planet to get")
@@ -237,7 +237,7 @@ func newPlanetsGetCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().Int64("planet-id", 0, "The ID of the planet to get")
@@ -269,7 +269,7 @@ func newPlanetsGetAllDataCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().Int64("limit", 0, "The number of items to return")
@@ -308,7 +308,7 @@ func newPlanetsImageCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().String("image", "", "The image file to upload")
@@ -452,7 +452,7 @@ func newPlanetsUpdateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().StringArray("atmosphere", nil, "Atmospheric composition")

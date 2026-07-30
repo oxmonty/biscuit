@@ -30,6 +30,12 @@ func NewRootCmd(version string) *cobra.Command {
 	var debug bool
 	var debugUnsafe bool
 	var headers []string
+	var format string
+	var transform string
+	var transformError string
+	var formatError string
+	var output string
+	var includeHeaders bool
 	var apiKeyCookie string
 	var apiKeyHeader string
 	var apiKeyQuery string
@@ -37,6 +43,16 @@ func NewRootCmd(version string) *cobra.Command {
 	var bearerAuth string
 	var oAuth2 string
 	var openIdConnect string
+	f.Output = func() *cmdutil.OutputOptions {
+		return &cmdutil.OutputOptions{
+			Format:         format,
+			Transform:      transform,
+			TransformError: transformError,
+			FormatError:    formatError,
+			Output:         output,
+			IncludeHeaders: includeHeaders,
+		}
+	}
 	f.Client = func() (*client.Client, error) {
 		h, err := cmdutil.ParseHeaders(headers)
 		if err != nil {
@@ -98,6 +114,12 @@ func NewRootCmd(version string) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log full request/response to stderr, secrets redacted")
 	cmd.PersistentFlags().BoolVar(&debugUnsafe, "debug-unsafe", false, "disable --debug redaction")
 	cmd.PersistentFlags().StringArrayVar(&headers, "header", nil, `extra header to send with every request ("Key: Value"), repeatable`)
+	cmd.PersistentFlags().StringVar(&format, "format", "auto", "output format: auto|json|jsonl|pretty|raw|yaml")
+	cmd.PersistentFlags().StringVar(&transform, "transform", "", "GJSON expression applied to a successful response body")
+	cmd.PersistentFlags().StringVar(&transformError, "transform-error", "", "GJSON expression applied to an error (4xx/5xx) response body")
+	cmd.PersistentFlags().StringVar(&formatError, "format-error", "", "output format override for error response bodies (default: --format)")
+	cmd.PersistentFlags().StringVarP(&output, "output", "o", "", `write the response body to a file instead of stdout; "auto" derives a filename from the response, "-" forces stdout`)
+	cmd.PersistentFlags().BoolVar(&includeHeaders, "include-headers", false, "print the response status and headers before the body")
 	cmd.PersistentFlags().StringVar(&apiKeyCookie, "api-key-cookie", "", "credential for the apiKeyCookie security scheme (env GALAXY_API_KEY_COOKIE)")
 	cmd.PersistentFlags().StringVar(&apiKeyHeader, "api-key-header", "", "credential for the apiKeyHeader security scheme (env GALAXY_API_KEY_HEADER)")
 	cmd.PersistentFlags().StringVar(&apiKeyQuery, "api-key-query", "", "credential for the apiKeyQuery security scheme (env GALAXY_API_KEY_QUERY)")

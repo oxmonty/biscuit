@@ -36,7 +36,7 @@ func newMeListCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	return cmd

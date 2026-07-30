@@ -116,6 +116,7 @@ type Response struct {
 	Status int
 	Header http.Header
 	Body   []byte
+	URL    string // the exact request URL, including query string
 }
 
 // RequestError marks a transport-level failure (DNS, connection refused,
@@ -206,7 +207,7 @@ retryLoop:
 				}
 				break
 			}
-			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
 			c.logResponse(resp, b)
 			lastResp, lastErr = result, nil
 			retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500

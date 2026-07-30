@@ -51,7 +51,7 @@ func newCelestialBodiesCreateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().String("body", "", "A celestial body which can be either a planet or a satellite")

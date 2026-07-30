@@ -4,14 +4,24 @@
 package cmdutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/tidwall/gjson"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/oxmonty/petstore-cli/internal/client"
 	"github.com/oxmonty/petstore-cli/internal/iostreams"
@@ -137,21 +147,334 @@ func Coerce(s, typ string) (any, error) {
 	}
 }
 
-// PrintResponse writes the response body and maps HTTP failure onto a
-// non-zero exit.
-func PrintResponse(ios *iostreams.IOStreams, resp *client.Response) error {
-	out := ios.Out
-	if resp.Status >= 400 {
-		out = ios.ErrOut
+// OutputOptions configures how PrintResponse renders and routes a response;
+// root.go builds one per invocation from the persistent output flags.
+type OutputOptions struct {
+	Format         string // auto | json | jsonl | pretty | raw | yaml
+	Transform      string // GJSON path applied to a successful response body
+	TransformError string // GJSON path applied to an error (>=400) response body
+	FormatError    string // Format override for error response bodies
+	Output         string // "" = stdout (guarded); "auto" = derive a filename; "-" = force stdout; else an explicit path
+	IncludeHeaders bool
+}
+
+var validOutputFormats = map[string]bool{
+	"auto": true, "json": true, "jsonl": true, "pretty": true, "raw": true, "yaml": true,
+}
+
+// PrintResponse renders resp through --format/--transform, routes it to
+// stdout or --output, and maps HTTP failure onto a non-zero exit.
+func PrintResponse(ios *iostreams.IOStreams, resp *client.Response, opts *OutputOptions) error {
+	isError := resp.Status >= 400
+
+	format := opts.Format
+	if isError && opts.FormatError != "" {
+		format = opts.FormatError
 	}
-	if len(resp.Body) > 0 {
-		_, _ = out.Write(resp.Body)
-		if resp.Body[len(resp.Body)-1] != '\n' {
-			_, _ = io.WriteString(out, "\n")
+	if format == "" {
+		format = "auto"
+	}
+	if !validOutputFormats[format] {
+		return &UsageError{Err: fmt.Errorf("invalid --format %q: want auto, json, jsonl, pretty, raw, or yaml", format)}
+	}
+
+	transform := opts.Transform
+	if isError && opts.TransformError != "" {
+		transform = opts.TransformError
+	}
+
+	dest := ios.Out
+	toFile := false
+	switch opts.Output {
+	case "":
+		// stdout, subject to the binary guard below
+	case "auto":
+		name := outputFilename(resp)
+		f, err := os.Create(name)
+		if err != nil {
+			return err
 		}
+		defer f.Close()
+		dest, toFile = f, true
+	case "-":
+		// explicit force-stdout
+	default:
+		f, err := os.Create(opts.Output)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		dest, toFile = f, true
 	}
-	if resp.Status >= 400 {
+
+	interactive := !toFile && ios.IsStdoutTTY()
+	if opts.Output == "" && interactive && format != "raw" && isBinaryResponse(resp) {
+		return &UsageError{Err: fmt.Errorf("response looks binary (%s); use --output to save it, --format raw, or pipe stdout", resp.Header.Get("Content-Type"))}
+	}
+
+	if opts.IncludeHeaders {
+		writeHeaders(ios.Out, resp)
+	}
+
+	body := resp.Body
+	if transform != "" {
+		body = applyTransform(body, transform)
+	}
+
+	colorful := interactive && os.Getenv("NO_COLOR") == ""
+	rendered := formatBody(format, body, colorful)
+	if len(rendered) > 0 {
+		_, _ = dest.Write(rendered)
+	}
+
+	if isError {
 		return &APIError{Status: resp.Status}
 	}
 	return nil
+}
+
+// writeHeaders prints resp's status line and sorted headers to out, ahead of
+// the body — always to stdout per --include-headers, even when the body
+// itself is routed to --output.
+func writeHeaders(out io.Writer, resp *client.Response) {
+	fmt.Fprintf(out, "HTTP %d %s\n", resp.Status, http.StatusText(resp.Status))
+	keys := make([]string, 0, len(resp.Header))
+	for k := range resp.Header {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range resp.Header[k] {
+			fmt.Fprintf(out, "%s: %s\n", k, v)
+		}
+	}
+	fmt.Fprintln(out)
+}
+
+// isBinaryResponse reports whether resp's Content-Type sits outside the
+// text/json/yaml/xml families and its body fails a UTF-8 heuristic — the
+// signal the --output guard uses to keep binary bytes off an interactive
+// terminal.
+func isBinaryResponse(resp *client.Response) bool {
+	ct := resp.Header.Get("Content-Type")
+	if mt, _, err := mime.ParseMediaType(ct); err == nil {
+		ct = mt
+	}
+	if strings.HasPrefix(ct, "text/") {
+		return false
+	}
+	for _, kw := range []string{"json", "yaml", "xml"} {
+		if strings.Contains(ct, kw) {
+			return false
+		}
+	}
+	return len(resp.Body) > 0 && !utf8.Valid(resp.Body)
+}
+
+// outputFilename derives a default name for a bare -o: the Content-Disposition
+// filename, else the response URL's last path segment, else a generic
+// fallback — then appends .1, .2, ... like wget so an existing file is never
+// clobbered.
+func outputFilename(resp *client.Response) string {
+	name := "response"
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil && params["filename"] != "" {
+			name = filepath.Base(params["filename"])
+		}
+	} else if resp.URL != "" {
+		if u, err := url.Parse(resp.URL); err == nil {
+			if base := path.Base(u.Path); base != "" && base != "." && base != "/" {
+				name = base
+			}
+		}
+	}
+	return nonClobberingPath(name)
+}
+
+func nonClobberingPath(name string) string {
+	if _, err := os.Stat(name); errors.Is(err, os.ErrNotExist) {
+		return name
+	}
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	for n := 1; ; n++ {
+		candidate := fmt.Sprintf("%s.%d%s", base, n, ext)
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate
+		}
+	}
+}
+
+// applyTransform runs a GJSON path over body; a path that matches nothing
+// yields nil (empty output — the exit code still follows resp.Status).
+func applyTransform(body []byte, gjsonPath string) []byte {
+	res := gjson.GetBytes(body, gjsonPath)
+	if !res.Exists() {
+		return nil
+	}
+	return []byte(res.Raw)
+}
+
+// formatBody renders body per format, resolving "auto" against colorful
+// (itself already TTY- and NO_COLOR-aware). Bodies that aren't valid JSON
+// pass through unchanged for every format but jsonl/yaml, which fall back to
+// a single raw line — there's no structure to split or convert.
+func formatBody(format string, body []byte, colorful bool) []byte {
+	if format == "auto" {
+		if colorful {
+			format = "pretty"
+		} else {
+			format = "compact"
+		}
+	}
+	switch format {
+	case "raw":
+		return body
+	case "compact":
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, body); err != nil {
+			return rawLine(body)
+		}
+		buf.WriteByte('\n')
+		return buf.Bytes()
+	case "json":
+		return prettyJSON(body, false)
+	case "pretty":
+		return prettyJSON(body, colorful)
+	case "yaml":
+		return jsonToYAML(body)
+	case "jsonl":
+		return toJSONL(body)
+	default:
+		return body
+	}
+}
+
+func rawLine(body []byte) []byte {
+	body = bytes.TrimRight(body, "\n")
+	if len(body) == 0 {
+		return body
+	}
+	return append(append([]byte(nil), body...), '\n')
+}
+
+// prettyJSON re-indents body 2-space; json.Indent works directly on the wire
+// bytes, so object key order survives instead of being alphabetized by a
+// decode/re-encode round trip.
+func prettyJSON(body []byte, color bool) []byte {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, body, "", "  "); err != nil {
+		return rawLine(body)
+	}
+	out := buf.Bytes()
+	if color {
+		out = colorizeJSON(out)
+	}
+	return append(out, '\n')
+}
+
+func jsonToYAML(body []byte) []byte {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return rawLine(body)
+	}
+	out, err := yaml.Marshal(v)
+	if err != nil {
+		return rawLine(body)
+	}
+	return out
+}
+
+// toJSONL splits a top-level JSON array into one compact line per element;
+// any other JSON value (object, scalar) prints as a single compact line.
+// json.RawMessage/json.Compact operate on the original bytes, so element key
+// order survives.
+func toJSONL(body []byte) []byte {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(body, &arr); err != nil {
+		var buf bytes.Buffer
+		if cerr := json.Compact(&buf, body); cerr != nil {
+			return rawLine(body)
+		}
+		buf.WriteByte('\n')
+		return buf.Bytes()
+	}
+	var buf bytes.Buffer
+	for _, item := range arr {
+		if err := json.Compact(&buf, item); err != nil {
+			buf.Write(item)
+		}
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+// ANSI colors for colorizeJSON: key, string, number, literal (true/false/null).
+const (
+	colorKey    = "\x1b[36m"
+	colorString = "\x1b[32m"
+	colorNumber = "\x1b[33m"
+	colorLit    = "\x1b[35m"
+	colorReset  = "\x1b[0m"
+)
+
+// colorizeJSON hand-colors already-indented JSON bytes: a minimal lexer, no
+// dependency. Strings immediately followed by ':' are keys; everything else
+// gets its own color by token kind.
+func colorizeJSON(src []byte) []byte {
+	var out bytes.Buffer
+	n := len(src)
+	for i := 0; i < n; {
+		c := src[i]
+		switch {
+		case c == '"':
+			start := i
+			i++
+			for i < n {
+				if src[i] == '\\' && i+1 < n {
+					i += 2
+					continue
+				}
+				if src[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			str := src[start:i]
+			j := i
+			for j < n && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
+				j++
+			}
+			if j < n && src[j] == ':' {
+				out.WriteString(colorKey)
+			} else {
+				out.WriteString(colorString)
+			}
+			out.Write(str)
+			out.WriteString(colorReset)
+		case c == '-' || (c >= '0' && c <= '9'):
+			start := i
+			i++
+			for i < n && strings.ContainsRune("0123456789+-.eE", rune(src[i])) {
+				i++
+			}
+			out.WriteString(colorNumber)
+			out.Write(src[start:i])
+			out.WriteString(colorReset)
+		case bytes.HasPrefix(src[i:], []byte("true")):
+			out.WriteString(colorLit + "true" + colorReset)
+			i += 4
+		case bytes.HasPrefix(src[i:], []byte("false")):
+			out.WriteString(colorLit + "false" + colorReset)
+			i += 5
+		case bytes.HasPrefix(src[i:], []byte("null")):
+			out.WriteString(colorLit + "null" + colorReset)
+			i += 4
+		default:
+			out.WriteByte(c)
+			i++
+		}
+	}
+	return out.Bytes()
 }

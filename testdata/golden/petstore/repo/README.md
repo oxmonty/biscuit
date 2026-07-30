@@ -31,6 +31,13 @@ petstore --help
 petstore pets create
 ```
 
+## Output control
+
+- `--format auto|json|jsonl|pretty|raw|yaml` — `auto` (default) is `pretty` on a terminal, compact JSON when piped. `pretty` syntax-highlights (disabled by `NO_COLOR` or a non-terminal).
+- `--transform '<gjson path>'` — extract part of a successful response body ([GJSON path syntax](https://github.com/tidwall/gjson#path-syntax)); the result still goes through `--format`. `--transform-error` does the same for error (4xx/5xx) bodies, and `--format-error` overrides `--format` for them.
+- `--output/-o <path>` — write the response body to a file instead of stdout. `-o auto` derives a filename from the response (Content-Disposition, else the URL) and won't clobber an existing file; `-o -` forces stdout.
+- `--include-headers` — print the response status and headers before the body.
+
 ## Exit codes
 
 | Code | Meaning |

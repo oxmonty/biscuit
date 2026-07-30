@@ -88,6 +88,44 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 		t.Errorf("path substitution = %q, want /pets/42", echoed.Path)
 	}
 
+	// then: --format jsonl on a non-array JSON body (the echo server always
+	// returns a JSON object) prints a single compact line, not one line per
+	// top-level key
+	jsonl := exec.Command(cliBin, "pets", "list", "--format", "jsonl", "--base-url", srv.URL)
+	out, err = jsonl.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets list --format jsonl: %v\n%s", err, out)
+	}
+	if lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n"); len(lines) != 1 {
+		t.Errorf("--format jsonl on a JSON object = %d lines, want 1:\n%s", len(lines), out)
+	}
+
+	// then: --transform extracts one field via a GJSON path, still printed
+	// through the format pipeline
+	transform := exec.Command(cliBin, "pets", "list", "--transform", "path", "--base-url", srv.URL)
+	out, err = transform.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets list --transform path: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "/pets") {
+		t.Errorf("--transform path = %q, want it to contain /pets", out)
+	}
+
+	// then: --include-headers prints the response status/headers before the
+	// body, on every format
+	headers := exec.Command(cliBin, "pets", "list", "--include-headers", "--base-url", srv.URL)
+	out, err = headers.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets list --include-headers: %v\n%s", err, out)
+	}
+	headerIdx := strings.Index(string(out), "Content-Type:")
+	bodyIdx := strings.Index(string(out), "{")
+	if headerIdx < 0 {
+		t.Errorf("--include-headers missing a header line:\n%s", out)
+	} else if bodyIdx < 0 || headerIdx > bodyIdx {
+		t.Errorf("--include-headers header must precede the body:\n%s", out)
+	}
+
 	// then: a missing required flag fails without touching the network,
 	// exiting with the documented usage-error code
 	missing := exec.Command(cliBin, "pets", "show", "--base-url", srv.URL)
