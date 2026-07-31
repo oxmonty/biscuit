@@ -109,6 +109,7 @@ type securityView struct {
 	Flag       string // kebab root flag name
 	VarName    string // Go local var in root.go holding the flag value
 	EnvVar     string // {BINARY}_{SCHEME} upper-snake env var
+	Desc       string // root flag help text, precomputed so the template never interpolates Name/EnvVar raw into a Go string literal
 	Type       string // apiKey | http | oauth2 | openIdConnect
 	HTTPScheme string // http only: bearer, basic, ...
 	In         string // apiKey only: header | query | cookie
@@ -213,6 +214,9 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	m.opsByRoute = make(map[string]*ir.Operation, len(api.Operations))
 	for i := range api.Operations {
 		op := &api.Operations[i]
+		// ponytail: verbs sharing method+path after query-string stripping
+		// share one canned mock response — indistinguishable on the wire by
+		// construction
 		m.opsByRoute[op.Method+" "+op.Path] = op
 	}
 
@@ -254,6 +258,7 @@ func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
 	for _, f := range []string{
 		"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header",
 		"format", "transform", "transform-error", "format-error", "output", "include-headers", "max-pages",
+		"help", "version",
 	} {
 		flags.claim(f)
 	}
@@ -264,14 +269,21 @@ func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
 	} {
 		vars.claim(v)
 	}
+	envVars := identSet{}
 	out := make([]*securityView, 0, len(schemes))
 	for _, s := range schemes {
 		kebabName := mapping.Kebab(s.Name)
+		// Two scheme names can kebab identically (apiKey/api_key), so the env
+		// var is claimed against its own set rather than derived straight
+		// from kebabName, which would otherwise collide even though Flag/
+		// VarName above already dedupe.
+		envVar := envVars.claim(upperSnake(m.Binary) + "_" + upperSnake(kebabName))
 		out = append(out, &securityView{
 			Name:       s.Name,
 			Flag:       flags.claim(kebabName),
 			VarName:    vars.claim(lowerCamel(kebabName)),
-			EnvVar:     upperSnake(m.Binary) + "_" + upperSnake(kebabName),
+			EnvVar:     envVar,
+			Desc:       fmt.Sprintf("credential for the %s security scheme (env %s)", s.Name, envVar),
 			Type:       s.Type,
 			HTTPScheme: s.Scheme,
 			In:         s.In,
@@ -426,6 +438,9 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 				vv.WholeBody = fv
 			} else {
 				fv.BodyPathLit = goStringSliceLit(f.BodyPath)
+				// ponytail: part name is the leaf body segment; nested
+				// multipart schemas sharing a leaf collide — diagnose if
+				// real specs ever hit it
 				fv.Wire = f.BodyPath[len(f.BodyPath)-1]
 				vv.BodyFlags = append(vv.BodyFlags, fv)
 			}

@@ -144,6 +144,11 @@ func TestPaginationRejects(t *testing.T) {
 		{"no next signal", ir.Operation{Params: query("page", "limit"), Responses: jsonResponse("data[]")}},
 		// a substring hit, never a match: "next_page_offset" is not "offset"
 		{"substring only", ir.Operation{Params: query("next_page_offset", "limit"), Responses: jsonResponse("data[]", "total")}},
+		// ending_before is Stripe's backward cursor; an operation declaring
+		// only it (no starting_after/after/cursor) must not match the
+		// forward walk, which would feed it a last-item cursor and walk
+		// backward
+		{"ending_before only", ir.Operation{Params: query("ending_before", "limit"), Responses: jsonResponse("data[]", "has_more")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

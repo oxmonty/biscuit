@@ -80,7 +80,15 @@ func applyScheme(s securityScheme, v string, header http.Header, query url.Value
 		case "query":
 			query.Set(s.Param, v)
 		case "cookie":
-			header.Add("Cookie", s.Param+"="+v)
+			// header is the caller's shared req.Header, and a paginated walk
+			// re-invokes the op per page over the same req, so Add would
+			// append one copy of this cookie per page.
+			pair := s.Param + "=" + v
+			if cur := header.Get("Cookie"); cur == "" {
+				header.Set("Cookie", pair)
+			} else if !strings.Contains(cur, s.Param+"=") {
+				header.Set("Cookie", cur+"; "+pair)
+			}
 		default: // header
 			header.Set(s.Param, v)
 		}

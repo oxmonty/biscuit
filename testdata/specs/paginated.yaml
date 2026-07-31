@@ -90,6 +90,40 @@ paths:
                       - 'null'
                   total:
                     type: integer
+  /gizmos:
+    get:
+      summary: List gizmos
+      operationId: listGizmos
+      parameters:
+        - name: offset
+          in: query
+          description: Gizmos to skip.
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Gizmos per page.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A page of gizmos, offset-stepped with no next link — a
+            documented total is the only corroborating signal, so the walk
+            steps arithmetically.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                  total:
+                    type: integer
 components:
   schemas:
     Widget:

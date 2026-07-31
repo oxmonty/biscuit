@@ -257,7 +257,11 @@ retryLoop:
 // restarting the request, since a retry would replay events fn already
 // delivered. A non-2xx response is read fully and returned as an ordinary
 // *Response (nil error) instead of streamed, so callers apply the same error
-// path as a buffered call.
+// path as a buffered call. A 2xx response whose Content-Type isn't
+// text/event-stream gets the same treatment: some specs (e.g. OpenAI's chat
+// completions) declare one 200 as both application/json and
+// text/event-stream, chosen by a body field rather than content negotiation,
+// so the actual response decides, not the spec.
 func (c *Client) stream(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string, fn func(data []byte) error) (*Response, error) {
 	ctx, cancel, u, reqHeader, err := c.prepareRequest(ctx, path, query, header, security)
 	if err != nil {
@@ -331,8 +335,27 @@ func (c *Client) stream(ctx context.Context, method, path string, query url.Valu
 			return result, nil
 		}
 
-		// A 2xx arrived: retries stop here, so events already dispatched to fn
-		// are never replayed by a later transport error.
+		ct, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";")
+		if strings.TrimSpace(ct) != "text/event-stream" {
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+					return nil, &RequestError{Err: ctx.Err()}
+				}
+				continue
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
+			c.logResponse(resp, b)
+			return result, nil
+		}
+
+		// A 2xx SSE response arrived: retries stop here, so events already
+		// dispatched to fn are never replayed by a later transport error.
 		if c.Debug && c.DebugOut != nil {
 			_, _ = fmt.Fprintf(c.DebugOut, "<-- %s (event-stream)\n", resp.Status)
 			c.logHeader(resp.Header)

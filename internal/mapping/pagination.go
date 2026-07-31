@@ -42,8 +42,12 @@ type Scheme struct {
 // survey, which ranks these by prevalence.
 var builtinSchemes = []Scheme{
 	{
+		// ending_before is deliberately absent from Params: it's Stripe's
+		// backward-pagination cursor, and feeding a forward walk's last-item
+		// cursor into it would walk backward instead of forward. An
+		// ending_before-only operation matches no built-in scheme.
 		Name: "cursor-has-more", Type: "cursor",
-		Params:      []string{"starting_after", "after", "cursor", "ending_before"},
+		Params:      []string{"starting_after", "after", "cursor"},
 		LimitParams: []string{"limit"},
 		NextFields:  []string{"has_more"},
 		NextKind:    "has_more",

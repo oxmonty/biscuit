@@ -16,8 +16,48 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
+
+var (
+	biscuitOnce sync.Once
+	biscuitDir  string
+	biscuitPath string
+	biscuitErr  error
+)
+
+// biscuitBinary returns the path to a biscuit binary built once and shared
+// across every e2e test in this file — each test used to rebuild it from
+// scratch, and some regenerated the same CLI too, which added up to real
+// wall-clock time for identical output. TestMain removes the shared build
+// directory once every test has run.
+func biscuitBinary(t *testing.T) string {
+	t.Helper()
+	biscuitOnce.Do(func() {
+		biscuitDir, biscuitErr = os.MkdirTemp("", "biscuit-e2e")
+		if biscuitErr != nil {
+			return
+		}
+		biscuitPath = filepath.Join(biscuitDir, "biscuit")
+		build := exec.Command("go", "build", "-o", biscuitPath, "./cmd/biscuit")
+		if out, err := build.CombinedOutput(); err != nil {
+			biscuitErr = fmt.Errorf("building biscuit: %w\n%s", err, out)
+		}
+	})
+	if biscuitErr != nil {
+		t.Fatal(biscuitErr)
+	}
+	return biscuitPath
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if biscuitDir != "" {
+		_ = os.RemoveAll(biscuitDir)
+	}
+	os.Exit(code)
+}
 
 // The feature end to end, through its real surfaces: the biscuit CLI binary
 // generates a repo, the repo builds, and the generated binary makes a correct
@@ -30,11 +70,7 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 
 	// given: a real biscuit binary and an echo server
 	work := t.TempDir()
-	biscuitBin := filepath.Join(work, "biscuit")
-	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building biscuit: %v\n%s", err, out)
-	}
+	biscuitBin := biscuitBinary(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
@@ -304,11 +340,7 @@ func TestEndToEndGalaxyAuth(t *testing.T) {
 	// given: a real biscuit binary and an echo server that also reports
 	// the headers it received
 	work := t.TempDir()
-	biscuitBin := filepath.Join(work, "biscuit")
-	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building biscuit: %v\n%s", err, out)
-	}
+	biscuitBin := biscuitBinary(t)
 	var requests int
 	var uploadedBytes []byte
 	var uploadedContentType string
@@ -490,11 +522,7 @@ func TestEndToEndPaginationWalk(t *testing.T) {
 	// a chat endpoint streaming 3 SSE events (one split across two data:
 	// lines) followed by an OpenAI-style "[DONE]" tail
 	work := t.TempDir()
-	biscuitBin := filepath.Join(work, "biscuit")
-	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building biscuit: %v\n%s", err, out)
-	}
+	biscuitBin := biscuitBinary(t)
 
 	widgets := []string{"w1", "w2", "w3", "w4", "w5", "w6"}
 	var widgetRequests []string
@@ -691,6 +719,60 @@ func TestEndToEndPaginationWalk(t *testing.T) {
 			t.Errorf("widgets chat --transform delta line %d = %q, want %q", i, deltaLines[i], want)
 		}
 	}
+
+	// then: an SSE op answered with plain JSON instead of an event stream —
+	// the OpenAI-style shape where one 200 is declared as both
+	// application/json and text/event-stream, chosen by a body field — prints
+	// the JSON body through the normal response pipeline instead of hanging
+	// on SSE framing, and exits 0
+	jsonChat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"reply": "not streamed"})
+	}))
+	defer jsonChat.Close()
+	chatJSON := exec.Command(cliBin, "widgets", "chat", "--message", "hi", "--base-url", jsonChat.URL)
+	out, err = chatJSON.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets chat against a JSON (non-SSE) response: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "not streamed") {
+		t.Errorf("widgets chat JSON fallback output = %q, want it to contain the JSON body", out)
+	}
+
+	// then: an offset walk with no next link, corroborated only by a
+	// documented total, steps arithmetically — and a server that clamps an
+	// out-of-range offset back to the last valid page (returning it again
+	// verbatim) doesn't defeat the walk's stop guards: it emits exactly the
+	// two real pages' items and terminates instead of looping forever
+	var gizmoRequests int
+	clampSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gizmoRequests++
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		if offset > 2 {
+			offset = 2 // clamp: the server refuses to page past the last real page
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]string{{"id": fmt.Sprintf("z%d", offset+1)}, {"id": fmt.Sprintf("z%d", offset+2)}},
+			"total":   4,
+		})
+	}))
+	defer clampSrv.Close()
+	clamped := exec.Command(cliBin, "gizmos", "list", "--limit", "2", "--format", "json", "--base-url", clampSrv.URL)
+	out, err = clamped.CombinedOutput()
+	if err != nil {
+		t.Fatalf("gizmos list against a clamping server: %v\n%s", err, out)
+	}
+	var gizmoItems []struct{ ID string }
+	if err := json.Unmarshal(out, &gizmoItems); err != nil {
+		t.Fatalf("gizmos output is not one JSON array: %v\n%s", err, out)
+	}
+	if len(gizmoItems) != 4 {
+		t.Errorf("clamped walk emitted %d items, want 4 (2 real pages, then stop on the repeated page): %v", len(gizmoItems), gizmoItems)
+	}
+	if gizmoRequests != 3 {
+		t.Errorf("clamped walk made %d requests, want 3 (2 real pages plus the repeated page that stops it)", gizmoRequests)
+	}
 }
 
 // TestEndToEndRetriesAndExitCodes pins the retry loop and the documented
@@ -705,11 +787,7 @@ func TestEndToEndRetriesAndExitCodes(t *testing.T) {
 	}
 
 	work := t.TempDir()
-	biscuitBin := filepath.Join(work, "biscuit")
-	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building biscuit: %v\n%s", err, out)
-	}
+	biscuitBin := biscuitBinary(t)
 	spec, err := filepath.Abs("testdata/specs/petstore.yaml")
 	if err != nil {
 		t.Fatal(err)

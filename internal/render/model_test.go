@@ -6,6 +6,29 @@ import (
 	"github.com/oxmonty/biscuit/internal/ir"
 )
 
+func TestBuildSecurityDedupesEnvVarsOnKebabCollision(t *testing.T) {
+	// given: two securitySchemes whose names kebab identically
+	m := &repoModel{Binary: "acme"}
+	schemes := []ir.SecurityScheme{
+		{Name: "apiKey", Type: "apiKey", In: "header", Param: "X-Api-Key"},
+		{Name: "api_key", Type: "apiKey", In: "header", Param: "X-Api-Key-2"},
+	}
+
+	// when: building the security views
+	got := m.buildSecurity(schemes)
+
+	// then: both the flag and the env var are distinct, not just the flag
+	if len(got) != 2 {
+		t.Fatalf("buildSecurity returned %d views, want 2", len(got))
+	}
+	if got[0].Flag == got[1].Flag {
+		t.Errorf("flags collide: both %q", got[0].Flag)
+	}
+	if got[0].EnvVar == got[1].EnvVar {
+		t.Errorf("env vars collide: both %q", got[0].EnvVar)
+	}
+}
+
 func TestSubstituteServerVariables(t *testing.T) {
 	cases := []struct {
 		name string

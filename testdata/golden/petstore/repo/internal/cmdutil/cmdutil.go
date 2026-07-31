@@ -444,6 +444,7 @@ func WalkPages(ctx context.Context, ios *iostreams.IOStreams, opts *OutputOption
 	var merged []json.RawMessage
 	var first *client.Response
 	var lastNext string
+	var prevItemsRaw string
 
 	for n := 1; maxPages <= 0 || n <= maxPages; n++ {
 		resp, err := call(ctx)
@@ -456,6 +457,15 @@ func WalkPages(ctx context.Context, ios *iostreams.IOStreams, opts *OutputOption
 			return PrintResponse(ios, resp, &pageOpts)
 		}
 		items := gjson.GetBytes(resp.Body, p.ItemsPath)
+		if n > 1 && items.Raw == prevItemsRaw {
+			// An API that clamps an out-of-range page/offset repeats the
+			// last valid page verbatim, which would otherwise defeat both
+			// stop guards below (a clamped page is full-length, and a
+			// step-kind token keeps advancing even though the content
+			// doesn't).
+			break
+		}
+		prevItemsRaw = items.Raw
 		elems := items.Array()
 		if stream {
 			page := *resp
