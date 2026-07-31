@@ -6,12 +6,12 @@ Generated CLIs make correct, ergonomic API calls, proven by golden requests agai
 
 Build order: 6 → 2 → 3 → 4 → 5 → 1 (the mock proves everything, so it lands last; the client core unblocks the rest).
 
-- [ ] Generate a mock server from any spec (routes + schema-valid canned responses + request recording), rendered into generated repos as smoke-test code; biscuit's e2e swaps E4's echo server for the repo's own smoke machinery, and E6's ladder and parity bench reuse the same generator.
-- [ ] Map `securitySchemes` to auth flags and env vars (`{BINARY}_{SCHEME}`, multiple keys supported); oauth2/openIdConnect run as pre-obtained bearer tokens from env with a doctor advisory.
-- [ ] Ship `--format auto|json|jsonl|pretty|raw|yaml` and `--transform`/`--transform-error`/`--format-error` via gjson, plus `--output/-o` with non-clobbering defaults, `--include-headers`, and the binary-to-TTY guard (`explore` waits for E8).
-- [ ] Implement `@file` argument handling with sniffing (text → string, binary → base64), explicit `@file://`/`@data://` prefixes, `\@` escape, and minimal multipart per-part mapping.
-- [ ] Implement pagination — transparent walking bounded by `--max-pages`, detected via declared `pagination:` schemes plus a built-in convention library (survey-seeded, word-boundary vocabulary, both-sides corroboration) — and stream SSE responses as JSONL when piped (plain line streaming on TTY until E8).
-- [ ] Add retries/backoff with `Retry-After`, the documented exit-code contract, `--debug` with secret redaction (`--debug-unsafe`), `--header` injection, and `servers[].variables` in the `--base-url` default.
+- [x] Generate a mock server from any spec (routes + schema-valid canned responses + request recording), rendered into generated repos as smoke-test code; biscuit's e2e proves a fresh repo passes its own suite (its outside-in wire-proof servers remain), and E6's ladder and parity bench reuse the same generator.
+- [x] Map `securitySchemes` to auth flags and env vars (`{BINARY}_{SCHEME}`, multiple keys supported); oauth2/openIdConnect run as pre-obtained bearer tokens from env, noted in the generated README (the doctor advisory needs a custom vacuum rule — E13).
+- [x] Ship `--format auto|json|jsonl|pretty|raw|yaml` and `--transform`/`--transform-error`/`--format-error` via gjson, plus `--output/-o` with non-clobbering defaults, `--include-headers`, and the binary-to-TTY guard (`explore` waits for E8).
+- [x] Implement `@file` argument handling with sniffing (text → string, binary → base64), explicit `@file://`/`@data://` prefixes, `\@` escape, and minimal multipart per-part mapping.
+- [x] Implement pagination — transparent walking bounded by `--max-pages`, detected via declared `pagination:` schemes plus a built-in convention library (survey-seeded, word-boundary vocabulary, both-sides corroboration) — and stream SSE responses as JSONL when piped (plain line streaming on TTY until E8).
+- [x] Add retries/backoff with `Retry-After`, the documented exit-code contract, `--debug` with secret redaction (`--debug-unsafe`), `--header` injection, and `servers[].variables` in the `--base-url` default.
 
 ## Acceptance criteria
 
