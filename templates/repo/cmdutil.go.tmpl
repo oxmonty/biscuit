@@ -4,14 +4,225 @@
 package cmdutil
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/tidwall/gjson"
+	"go.yaml.in/yaml/v4"
 
 	"{{.Module}}/internal/client"
 	"{{.Module}}/internal/iostreams"
 )
+
+// Exit-code contract for generated CLIs: scripts and agents branch on
+// these, so they only ever grow — never renumber.
+const (
+	ExitOK       = 0
+	ExitInternal = 1
+	ExitUsage    = 2
+	ExitAuth     = 3
+	ExitAPIError = 4
+	ExitServer   = 5
+	ExitNetwork  = 6
+)
+
+// APIError marks a non-2xx HTTP response so ExitCode can classify it.
+type APIError struct{ Status int }
+
+func (e *APIError) Error() string { return fmt.Sprintf("API error: HTTP %d", e.Status) }
+
+// UsageError marks errors from flag parsing or malformed flag values.
+type UsageError struct{ Err error }
+
+func (e *UsageError) Error() string { return e.Err.Error() }
+func (e *UsageError) Unwrap() error { return e.Err }
+
+// ExitCode maps an error returned from the root command's Execute onto the
+// documented exit-code contract.
+func ExitCode(err error) int {
+	if err == nil {
+		return ExitOK
+	}
+	var usage *UsageError
+	if errors.As(err, &usage) {
+		return ExitUsage
+	}
+	var auth *client.AuthError
+	if errors.As(err, &auth) {
+		return ExitAuth
+	}
+	var api *APIError
+	if errors.As(err, &api) {
+		switch {
+		case api.Status == http.StatusUnauthorized || api.Status == http.StatusForbidden:
+			return ExitAuth
+		case api.Status >= 500:
+			return ExitServer
+		case api.Status >= 400:
+			return ExitAPIError
+		}
+	}
+	var req *client.RequestError
+	if errors.As(err, &req) {
+		return ExitNetwork
+	}
+	// ponytail: cobra emits required-flag and unknown-command errors as
+	// plain fmt.Errorf, bypassing SetFlagErrorFunc; string-match is the
+	// ceiling until cobra types them.
+	if msg := err.Error(); strings.Contains(msg, "required flag(s)") || strings.HasPrefix(msg, "unknown command") {
+		return ExitUsage
+	}
+	return ExitInternal
+}
+
+// ExpandArg expands @ syntax in a string flag value destined for a JSON body
+// field: a bare @path or @file://path reads the named file, sniffing its
+// bytes as text (kept as a string) or binary (base64-encoded, since JSON has
+// no raw-byte type); @data://literal passes the rest through unchanged with
+// no file read; a leading \@ escapes to a literal @. Anything else passes
+// through untouched. Applies only to string body-path flags and --body —
+// the @ convention is for payloads, not query/header/path params.
+func ExpandArg(v string) (string, error) {
+	src, err := parseArgSource(v)
+	if err != nil {
+		return "", err
+	}
+	if !src.sniff {
+		return string(src.data), nil
+	}
+	if utf8.Valid(src.data) {
+		return string(src.data), nil
+	}
+	return base64.StdEncoding.EncodeToString(src.data), nil
+}
+
+// ExpandFilePart expands @ syntax for a multipart/form-data part. Unlike
+// ExpandArg it returns the raw bytes (never base64 — multipart carries
+// binary natively) plus the source filename when the value read an actual
+// file; filename is empty for a literal or plain value, which BuildMultipart
+// then sends as a text part instead of a file part.
+func ExpandFilePart(v string) (data []byte, filename string, err error) {
+	src, err := parseArgSource(v)
+	if err != nil {
+		return nil, "", err
+	}
+	return src.data, src.filename, nil
+}
+
+// argSource is the parsed form of a possibly-@-prefixed flag value.
+type argSource struct {
+	data     []byte
+	filename string // set only when the value read an actual file
+	sniff    bool   // true only for a real file read; literals pass through as-is
+}
+
+func parseArgSource(v string) (argSource, error) {
+	switch {
+	case strings.HasPrefix(v, `\@`):
+		return argSource{data: []byte(v[1:])}, nil
+	case strings.HasPrefix(v, "@data://"):
+		return argSource{data: []byte(strings.TrimPrefix(v, "@data://"))}, nil
+	case strings.HasPrefix(v, "@file://"):
+		return readArgFile(strings.TrimPrefix(v, "@file://"))
+	case strings.HasPrefix(v, "@"):
+		return readArgFile(v[1:])
+	default:
+		return argSource{data: []byte(v)}, nil
+	}
+}
+
+func readArgFile(path string) (argSource, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return argSource{}, &UsageError{Err: fmt.Errorf("reading %s: %w", path, err)}
+	}
+	return argSource{data: data, filename: filepath.Base(path), sniff: true}, nil
+}
+
+// MultipartPart is one field of a multipart/form-data request body.
+type MultipartPart struct {
+	Name     string
+	Value    string // text part; ignored when File is set
+	File     []byte // file part bytes; nil means a text part
+	Filename string
+}
+
+// BuildMultipart renders parts into a multipart/form-data body, sniffing
+// each file part's Content-Type from its own bytes — multipart carries
+// binary per part, so there's no single whole-body sniff the way a JSON
+// @file value gets.
+func BuildMultipart(parts []MultipartPart) (body []byte, contentType string, err error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for _, p := range parts {
+		if p.File == nil {
+			fw, err := w.CreateFormField(p.Name)
+			if err != nil {
+				return nil, "", err
+			}
+			if _, err := fw.Write([]byte(p.Value)); err != nil {
+				return nil, "", err
+			}
+			continue
+		}
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, p.Name, p.Filename))
+		h.Set("Content-Type", http.DetectContentType(p.File))
+		fw, err := w.CreatePart(h)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := fw.Write(p.File); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
+}
+
+// ResolveCredential returns flagValue if set, else the named env var — the
+// flag-over-env precedence for security-scheme credentials.
+func ResolveCredential(flagValue, envVar string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return os.Getenv(envVar)
+}
+
+// ParseHeaders parses repeated "Key: Value" --header flags into a header set.
+func ParseHeaders(raw []string) (http.Header, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	h := http.Header{}
+	for _, r := range raw {
+		k, v, ok := strings.Cut(r, ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid --header %q: want \"Key: Value\"", r)
+		}
+		h.Add(strings.TrimSpace(k), strings.TrimSpace(v))
+	}
+	return h, nil
+}
 
 // SetPath sets value at path inside nested maps, creating levels as needed.
 func SetPath(m map[string]any, path []string, value any) {
@@ -47,21 +258,624 @@ func Coerce(s, typ string) (any, error) {
 	}
 }
 
-// PrintResponse writes the response body and maps HTTP failure onto a
-// non-zero exit.
-func PrintResponse(ios *iostreams.IOStreams, resp *client.Response) error {
-	out := ios.Out
-	if resp.Status >= 400 {
-		out = ios.ErrOut
+// OutputOptions configures how PrintResponse renders and routes a response;
+// root.go builds one per invocation from the persistent output flags.
+type OutputOptions struct {
+	Format         string // auto | json | jsonl | pretty | raw | yaml
+	Transform      string // GJSON path applied to a successful response body
+	TransformError string // GJSON path applied to an error (>=400) response body
+	FormatError    string // Format override for error response bodies
+	Output         string // "" = stdout (guarded); "auto" = derive a filename; "-" = force stdout; else an explicit path
+	IncludeHeaders bool
+}
+
+var validOutputFormats = map[string]bool{
+	"auto": true, "json": true, "jsonl": true, "pretty": true, "raw": true, "yaml": true,
+}
+
+// PrintResponse renders resp through --format/--transform, routes it to
+// stdout or --output, and maps HTTP failure onto a non-zero exit.
+func PrintResponse(ios *iostreams.IOStreams, resp *client.Response, opts *OutputOptions) error {
+	isError := resp.Status >= 400
+
+	format := opts.Format
+	if isError && opts.FormatError != "" {
+		format = opts.FormatError
 	}
-	if len(resp.Body) > 0 {
-		_, _ = out.Write(resp.Body)
-		if resp.Body[len(resp.Body)-1] != '\n' {
-			_, _ = io.WriteString(out, "\n")
+	if format == "" {
+		format = "auto"
+	}
+	if !validOutputFormats[format] {
+		return &UsageError{Err: fmt.Errorf("invalid --format %q: want auto, json, jsonl, pretty, raw, or yaml", format)}
+	}
+
+	transform := opts.Transform
+	if isError && opts.TransformError != "" {
+		transform = opts.TransformError
+	}
+
+	dest := ios.Out
+	toFile := false
+	switch opts.Output {
+	case "":
+		// stdout, subject to the binary guard below
+	case "auto":
+		name := outputFilename(resp)
+		f, err := os.Create(name)
+		if err != nil {
+			return err
 		}
+		defer f.Close()
+		dest, toFile = f, true
+	case "-":
+		// explicit force-stdout
+	default:
+		f, err := os.Create(opts.Output)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		dest, toFile = f, true
 	}
-	if resp.Status >= 400 {
-		return fmt.Errorf("API error: HTTP %d", resp.Status)
+
+	interactive := !toFile && ios.IsStdoutTTY()
+	if opts.Output == "" && interactive && format != "raw" && isBinaryResponse(resp) {
+		return &UsageError{Err: fmt.Errorf("response looks binary (%s); use --output to save it, --format raw, or pipe stdout", resp.Header.Get("Content-Type"))}
+	}
+
+	if opts.IncludeHeaders {
+		writeHeaders(ios.Out, resp)
+	}
+
+	body := resp.Body
+	if transform != "" {
+		body = applyTransform(body, transform)
+	}
+
+	colorful := interactive && os.Getenv("NO_COLOR") == ""
+	rendered := formatBody(format, body, colorful)
+	if len(rendered) > 0 {
+		_, _ = dest.Write(rendered)
+	}
+
+	if isError {
+		return &APIError{Status: resp.Status}
 	}
 	return nil
+}
+
+// PrintStream drives an SSE verb's output: it resolves the destination once
+// so --output accumulates across events, then calls doStream with a callback
+// that renders and writes each event's data as it arrives — an unbounded
+// stream can't buffer into one document the way a paginated walk's document
+// formats do, so json/pretty/yaml apply per event too. A non-2xx response
+// comes back as an ordinary *Response and goes through PrintResponse's usual
+// error path instead of being streamed.
+func PrintStream(ios *iostreams.IOStreams, opts *OutputOptions, doStream func(fn func(data []byte) error) (*client.Response, error)) error {
+	format := opts.Format
+	if format == "" || format == "auto" {
+		// a stream is a sequence of events, not one document — auto resolves
+		// to one line per event rather than pretty-printing mid-stream
+		format = "jsonl"
+	}
+	if !validOutputFormats[format] {
+		return &UsageError{Err: fmt.Errorf("invalid --format %q: want auto, json, jsonl, pretty, raw, or yaml", format)}
+	}
+
+	dest := ios.Out
+	switch opts.Output {
+	case "", "-":
+		// stdout
+	default:
+		name := opts.Output
+		if name == "auto" {
+			// ponytail: no response yet to derive a filename from when the
+			// stream starts (unlike PrintResponse's outputFilename); a fixed
+			// name beats guessing.
+			name = "stream"
+		}
+		f, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		dest = f
+	}
+
+	colorful := opts.Output == "" && ios.IsStdoutTTY() && os.Getenv("NO_COLOR") == ""
+
+	resp, err := doStream(func(data []byte) error {
+		if string(data) == "[DONE]" { // OpenAI's end-of-stream sentinel, not a real event
+			return nil
+		}
+		body := data
+		if opts.Transform != "" {
+			body = applyTransform(body, opts.Transform)
+		}
+		if rendered := formatBody(format, body, colorful); len(rendered) > 0 {
+			if _, err := dest.Write(rendered); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if resp != nil {
+		return PrintResponse(ios, resp, opts)
+	}
+	return nil
+}
+
+// Pagination is one operation's resolved pagination scheme, filled in by the
+// generator from the scheme that matched the operation's request params and
+// response shape.
+type Pagination struct {
+	Type       string // cursor | offset | page
+	Param      string // query param the walk advances
+	LimitParam string // query param carrying the page size; "" when the operation has none
+	ItemsPath  string // GJSON path to the items array; "@this" for a bare top-level array
+	NextPath   string // GJSON path to the next-page signal; "" for the link_header and step kinds
+	NextKind   string // has_more | cursor | url | link_header | step
+}
+
+// WalkPages fetches every page of a paginated operation and prints the items
+// as one logical result. call re-issues the operation; query is the request's
+// live query values, which the walk advances between calls. maxPages bounds
+// the walk, 0 meaning walk to exhaustion.
+//
+// Streaming formats print each page's items as they arrive; document formats
+// accumulate them and print one merged array at the end.
+func WalkPages(ctx context.Context, ios *iostreams.IOStreams, opts *OutputOptions, maxPages int, p Pagination, query url.Values, call func(context.Context) (*client.Response, error)) error {
+	// A file destination gets one document rather than one truncating write
+	// per page, so --output always accumulates.
+	stream := streamingFormat(opts.Format, ios) && (opts.Output == "" || opts.Output == "-")
+	pageOpts := *opts
+	if stream && (pageOpts.Format == "" || pageOpts.Format == "auto") {
+		// a piped walk is a stream of items, so auto resolves to one item per
+		// line rather than one compact array per page
+		pageOpts.Format = "jsonl"
+	}
+
+	// ponytail: a document format holds every item in memory to print one
+	// merged array; --max-pages is the ceiling, and --format jsonl streams
+	// instead for a walk too big to hold.
+	var merged []json.RawMessage
+	var first *client.Response
+	var lastNext string
+	var prevItemsRaw string
+
+	for n := 1; maxPages <= 0 || n <= maxPages; n++ {
+		resp, err := call(ctx)
+		if err != nil {
+			return err
+		}
+		if resp.Status >= 400 {
+			// A failed page ends the walk. Items already streamed stay
+			// printed; a document format prints only this error body.
+			return PrintResponse(ios, resp, &pageOpts)
+		}
+		items := gjson.GetBytes(resp.Body, p.ItemsPath)
+		if n > 1 && items.Raw == prevItemsRaw {
+			// An API that clamps an out-of-range page/offset repeats the
+			// last valid page verbatim, which would otherwise defeat both
+			// stop guards below (a clamped page is full-length, and a
+			// step-kind token keeps advancing even though the content
+			// doesn't).
+			break
+		}
+		prevItemsRaw = items.Raw
+		elems := items.Array()
+		if stream {
+			page := *resp
+			page.Body = []byte(items.Raw)
+			if err := PrintResponse(ios, &page, &pageOpts); err != nil {
+				return err
+			}
+		} else {
+			if first == nil {
+				first = resp
+			}
+			for _, e := range elems {
+				merged = append(merged, json.RawMessage(e.Raw))
+			}
+		}
+		pageOpts.IncludeHeaders = false // --include-headers prints the first page's only
+
+		if len(elems) == 0 {
+			break
+		}
+		next, more := nextPage(p, resp, elems, query)
+		if !more || next == lastNext {
+			break // exhausted, or a repeated token that would loop forever
+		}
+		lastNext = next
+	}
+
+	if stream || first == nil {
+		return nil
+	}
+	out := *first
+	out.Body = mergedArray(merged)
+	return PrintResponse(ios, &out, opts)
+}
+
+// streamingFormat reports whether format prints each page as it arrives
+// rather than accumulating one document.
+func streamingFormat(format string, ios *iostreams.IOStreams) bool {
+	switch format {
+	case "jsonl", "raw":
+		return true
+	case "", "auto":
+		return !ios.IsStdoutTTY()
+	}
+	return false
+}
+
+// nextPage advances query to the next page from resp's next-page signal,
+// returning the token it set. more is false when the response says the walk
+// is over — the signal is exhausted, or there is nothing to advance with.
+func nextPage(p Pagination, resp *client.Response, elems []gjson.Result, query url.Values) (token string, more bool) {
+	switch p.NextKind {
+	case "has_more":
+		if !gjson.GetBytes(resp.Body, p.NextPath).Bool() {
+			return "", false
+		}
+		// has_more carries no token of its own: the next cursor is the
+		// page's last id, which OpenAI states as last_id and Stripe leaves
+		// on the last object.
+		cursor := gjson.GetBytes(resp.Body, "last_id").String()
+		if cursor == "" {
+			cursor = elems[len(elems)-1].Get("id").String()
+		}
+		if cursor == "" {
+			return "", false
+		}
+		query.Set(p.Param, cursor)
+		return cursor, true
+
+	case "cursor":
+		cursor := gjson.GetBytes(resp.Body, p.NextPath).String()
+		if cursor == "" {
+			return "", false
+		}
+		query.Set(p.Param, cursor)
+		return cursor, true
+
+	case "url", "link_header":
+		raw := gjson.GetBytes(resp.Body, p.NextPath).String()
+		if p.NextKind == "link_header" {
+			raw = linkRel(resp.Header.Get("Link"), "next")
+		}
+		if raw == "" {
+			return "", false
+		}
+		next, err := url.Parse(raw)
+		if err != nil {
+			return "", false
+		}
+		// Only the next URL's query is applied, onto the same operation. A
+		// different path is a different operation, and following it blindly
+		// would send this command's credentials somewhere it never agreed to.
+		cur, err := url.Parse(resp.URL)
+		if err != nil || (next.Path != "" && next.Path != cur.Path) {
+			return "", false
+		}
+		for k := range query {
+			delete(query, k)
+		}
+		for k, vs := range next.Query() {
+			query[k] = vs
+		}
+		return next.RawQuery, true
+
+	case "step":
+		return stepPage(p, len(elems), query)
+	}
+	return "", false
+}
+
+// stepPage advances an offset/page walk arithmetically, for schemes whose
+// response documents a total instead of a next link. A short page — fewer
+// items than the requested limit — is the last one.
+func stepPage(p Pagination, n int, query url.Values) (string, bool) {
+	if p.LimitParam != "" {
+		if limit, err := strconv.Atoi(query.Get(p.LimitParam)); err == nil && n < limit {
+			return "", false
+		}
+	}
+	cur, _ := strconv.Atoi(query.Get(p.Param))
+	if p.Type == "offset" {
+		cur += n
+	} else {
+		if cur == 0 {
+			cur = 1 // page numbering is 1-based when the flag was left unset
+		}
+		cur++
+	}
+	v := strconv.Itoa(cur)
+	query.Set(p.Param, v)
+	return v, true
+}
+
+// linkRel returns the URL of the first RFC 5988 Link entry carrying the named
+// relation.
+//
+// ponytail: splits on "," and ";", which a URL containing either would defeat;
+// a real Link parser only if an API in the wild emits one.
+func linkRel(header, rel string) string {
+	for _, entry := range strings.Split(header, ",") {
+		parts := strings.Split(entry, ";")
+		if len(parts) < 2 {
+			continue
+		}
+		target := strings.Trim(strings.TrimSpace(parts[0]), "<>")
+		for _, param := range parts[1:] {
+			k, v, ok := strings.Cut(strings.TrimSpace(param), "=")
+			if ok && strings.TrimSpace(k) == "rel" && strings.Trim(strings.TrimSpace(v), `"`) == rel {
+				return target
+			}
+		}
+	}
+	return ""
+}
+
+// mergedArray renders the accumulated items as one JSON array, element bytes
+// untouched so key order survives.
+func mergedArray(items []json.RawMessage) []byte {
+	if len(items) == 0 {
+		return []byte("[]")
+	}
+	out, err := json.Marshal(items)
+	if err != nil {
+		return []byte("[]")
+	}
+	return out
+}
+
+// writeHeaders prints resp's status line and sorted headers to out, ahead of
+// the body — always to stdout per --include-headers, even when the body
+// itself is routed to --output.
+func writeHeaders(out io.Writer, resp *client.Response) {
+	fmt.Fprintf(out, "HTTP %d %s\n", resp.Status, http.StatusText(resp.Status))
+	keys := make([]string, 0, len(resp.Header))
+	for k := range resp.Header {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range resp.Header[k] {
+			fmt.Fprintf(out, "%s: %s\n", k, v)
+		}
+	}
+	fmt.Fprintln(out)
+}
+
+// isBinaryResponse reports whether resp's Content-Type sits outside the
+// text/json/yaml/xml families and its body fails a UTF-8 heuristic — the
+// signal the --output guard uses to keep binary bytes off an interactive
+// terminal.
+func isBinaryResponse(resp *client.Response) bool {
+	ct := resp.Header.Get("Content-Type")
+	if mt, _, err := mime.ParseMediaType(ct); err == nil {
+		ct = mt
+	}
+	if strings.HasPrefix(ct, "text/") {
+		return false
+	}
+	for _, kw := range []string{"json", "yaml", "xml"} {
+		if strings.Contains(ct, kw) {
+			return false
+		}
+	}
+	return len(resp.Body) > 0 && !utf8.Valid(resp.Body)
+}
+
+// outputFilename derives a default name for a bare -o: the Content-Disposition
+// filename, else the response URL's last path segment, else a generic
+// fallback — then appends .1, .2, ... like wget so an existing file is never
+// clobbered.
+func outputFilename(resp *client.Response) string {
+	name := "response"
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil && params["filename"] != "" {
+			name = filepath.Base(params["filename"])
+		}
+	} else if resp.URL != "" {
+		if u, err := url.Parse(resp.URL); err == nil {
+			if base := path.Base(u.Path); base != "" && base != "." && base != "/" {
+				name = base
+			}
+		}
+	}
+	return nonClobberingPath(name)
+}
+
+func nonClobberingPath(name string) string {
+	if _, err := os.Stat(name); errors.Is(err, os.ErrNotExist) {
+		return name
+	}
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	for n := 1; ; n++ {
+		candidate := fmt.Sprintf("%s.%d%s", base, n, ext)
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate
+		}
+	}
+}
+
+// applyTransform runs a GJSON path over body; a path that matches nothing
+// yields nil (empty output — the exit code still follows resp.Status).
+func applyTransform(body []byte, gjsonPath string) []byte {
+	res := gjson.GetBytes(body, gjsonPath)
+	if !res.Exists() {
+		return nil
+	}
+	return []byte(res.Raw)
+}
+
+// formatBody renders body per format, resolving "auto" against colorful
+// (itself already TTY- and NO_COLOR-aware). Bodies that aren't valid JSON
+// pass through unchanged for every format but jsonl/yaml, which fall back to
+// a single raw line — there's no structure to split or convert.
+func formatBody(format string, body []byte, colorful bool) []byte {
+	if format == "auto" {
+		if colorful {
+			format = "pretty"
+		} else {
+			format = "compact"
+		}
+	}
+	switch format {
+	case "raw":
+		return body
+	case "compact":
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, body); err != nil {
+			return rawLine(body)
+		}
+		buf.WriteByte('\n')
+		return buf.Bytes()
+	case "json":
+		return prettyJSON(body, false)
+	case "pretty":
+		return prettyJSON(body, colorful)
+	case "yaml":
+		return jsonToYAML(body)
+	case "jsonl":
+		return toJSONL(body)
+	default:
+		return body
+	}
+}
+
+func rawLine(body []byte) []byte {
+	body = bytes.TrimRight(body, "\n")
+	if len(body) == 0 {
+		return body
+	}
+	return append(append([]byte(nil), body...), '\n')
+}
+
+// prettyJSON re-indents body 2-space; json.Indent works directly on the wire
+// bytes, so object key order survives instead of being alphabetized by a
+// decode/re-encode round trip.
+func prettyJSON(body []byte, color bool) []byte {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, body, "", "  "); err != nil {
+		return rawLine(body)
+	}
+	out := buf.Bytes()
+	if color {
+		out = colorizeJSON(out)
+	}
+	return append(out, '\n')
+}
+
+func jsonToYAML(body []byte) []byte {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return rawLine(body)
+	}
+	out, err := yaml.Marshal(v)
+	if err != nil {
+		return rawLine(body)
+	}
+	return out
+}
+
+// toJSONL splits a top-level JSON array into one compact line per element;
+// any other JSON value (object, scalar) prints as a single compact line.
+// json.RawMessage/json.Compact operate on the original bytes, so element key
+// order survives.
+func toJSONL(body []byte) []byte {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(body, &arr); err != nil {
+		var buf bytes.Buffer
+		if cerr := json.Compact(&buf, body); cerr != nil {
+			return rawLine(body)
+		}
+		buf.WriteByte('\n')
+		return buf.Bytes()
+	}
+	var buf bytes.Buffer
+	for _, item := range arr {
+		if err := json.Compact(&buf, item); err != nil {
+			buf.Write(item)
+		}
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+// ANSI colors for colorizeJSON: key, string, number, literal (true/false/null).
+const (
+	colorKey    = "\x1b[36m"
+	colorString = "\x1b[32m"
+	colorNumber = "\x1b[33m"
+	colorLit    = "\x1b[35m"
+	colorReset  = "\x1b[0m"
+)
+
+// colorizeJSON hand-colors already-indented JSON bytes: a minimal lexer, no
+// dependency. Strings immediately followed by ':' are keys; everything else
+// gets its own color by token kind.
+func colorizeJSON(src []byte) []byte {
+	var out bytes.Buffer
+	n := len(src)
+	for i := 0; i < n; {
+		c := src[i]
+		switch {
+		case c == '"':
+			start := i
+			i++
+			for i < n {
+				if src[i] == '\\' && i+1 < n {
+					i += 2
+					continue
+				}
+				if src[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			str := src[start:i]
+			j := i
+			for j < n && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
+				j++
+			}
+			if j < n && src[j] == ':' {
+				out.WriteString(colorKey)
+			} else {
+				out.WriteString(colorString)
+			}
+			out.Write(str)
+			out.WriteString(colorReset)
+		case c == '-' || (c >= '0' && c <= '9'):
+			start := i
+			i++
+			for i < n && strings.ContainsRune("0123456789+-.eE", rune(src[i])) {
+				i++
+			}
+			out.WriteString(colorNumber)
+			out.Write(src[start:i])
+			out.WriteString(colorReset)
+		case bytes.HasPrefix(src[i:], []byte("true")):
+			out.WriteString(colorLit + "true" + colorReset)
+			i += 4
+		case bytes.HasPrefix(src[i:], []byte("false")):
+			out.WriteString(colorLit + "false" + colorReset)
+			i += 5
+		case bytes.HasPrefix(src[i:], []byte("null")):
+			out.WriteString(colorLit + "null" + colorReset)
+			i += 4
+		default:
+			out.WriteByte(c)
+			i++
+		}
+	}
+	return out.Bytes()
 }

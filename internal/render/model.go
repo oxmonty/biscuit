@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/oxmonty/biscuit/internal/config"
 	"github.com/oxmonty/biscuit/internal/ir"
+	"github.com/oxmonty/biscuit/internal/mapping"
 )
 
 // The view model precomputes every name, expression, and branch the templates
@@ -38,6 +40,15 @@ type repoModel struct {
 	AllResources []*resourceView // every node, depth-first — one output file each
 	RootVerbs    []*verbView
 	Ops          []*verbView // every verb incl. root verbs, in Ident-claim order
+	MockRoutes   []*verbView // every verb sorted by (Path, Method): the mock's route table and the smoke suite's cases
+
+	// synth and opsByRoute back the mock's response synthesis: a verb knows its
+	// method and path, and the operation behind them carries the responses.
+	synth      *mockSynth
+	opsByRoute map[string]*ir.Operation
+
+	Security           []*securityView // securitySchemes, sorted by Name
+	SecurityWireParams []string        // apiKey scheme Param names, lowercased and deduped, for redaction
 
 	// ManPages lists every page cobra's GenManTree emits for the generated
 	// tree ({binary}-{chain}-{verb}.1), sorted — the cask manpage stanzas
@@ -74,15 +85,45 @@ type verbView struct {
 	HeadFlags  []*flagView
 	BodyFlags  []*flagView // structured dot-notation body flags
 	WholeBody  *flagView   // the single opaque body flag, when the body didn't flatten
+	Multipart  bool        // BodyFlags become multipart/form-data parts, not a JSON object
+
+	SecurityLit string         // Go [][]string literal: this verb's security OR-list, passed to Client.do
+	Pagination  *ir.Pagination // set when the operation matched a pagination scheme: the verb walks pages
+	SSE         bool           // success response is text/event-stream: the verb streams events instead of buffering one body
+
+	// the generated mock's route for this verb, and the smoke case driving it
+	MockPath     string // Path with any query string cut: what the request's URL path carries
+	MockStatus   int
+	MockType     string // response Content-Type; empty when the operation declares no body
+	MockBody     string // canned response body, compact JSON
+	SmokeName    string // command path, space-separated: the smoke subtest's name
+	SmokeArgsLit string // Go []string literal: command path plus every flag the invocation needs
+	SmokeSkip    string // non-empty: why this verb can't be driven generically
+}
+
+// securityView is one components/securitySchemes entry's generated shape:
+// the root flag and env var that resolve its credential, plus the wire
+// details the client needs to apply it.
+type securityView struct {
+	Name       string // key in components/securitySchemes
+	Flag       string // kebab root flag name
+	VarName    string // Go local var in root.go holding the flag value
+	EnvVar     string // {BINARY}_{SCHEME} upper-snake env var
+	Desc       string // root flag help text, precomputed so the template never interpolates Name/EnvVar raw into a Go string literal
+	Type       string // apiKey | http | oauth2 | openIdConnect
+	HTTPScheme string // http only: bearer, basic, ...
+	In         string // apiKey only: header | query | cookie
+	Param      string // apiKey only: the header/query/cookie name
 }
 
 type flagView struct {
 	Name        string
 	Description string
 	Type        string // string | integer | number | boolean | json
+	Format      string // schema format (e.g. "binary"); string-typed flags only
 	Required    bool
 	Repeated    bool
-	Wire        string // path/query/header wire name
+	Wire        string // path/query/header wire name; body flags reuse it as the multipart part name (leaf property)
 	Field       string // path only: request struct field
 	BodyPathLit string // body only: Go literal like []string{"a", "b"}
 
@@ -132,7 +173,7 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	if len(api.Servers) > 0 {
 		// ponytail: servers are URL-sorted in the IR, so this is the first
 		// alphabetically, not the spec's primary; output.base_url if it matters
-		baseURL = api.Servers[0].URL
+		baseURL = substituteServerVariables(api.Servers[0])
 	}
 
 	description := cfg.Output.Description
@@ -166,6 +207,19 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 		RepoName:      repo,
 	}
 
+	m.Security = m.buildSecurity(api.Security)
+	m.SecurityWireParams = wireParams(m.Security)
+
+	m.synth = newMockSynth(api.Schemas)
+	m.opsByRoute = make(map[string]*ir.Operation, len(api.Operations))
+	for i := range api.Operations {
+		op := &api.Operations[i]
+		// ponytail: verbs sharing method+path after query-string stripping
+		// share one canned mock response — indistinguishable on the wire by
+		// construction
+		m.opsByRoute[op.Method+" "+op.Path] = op
+	}
+
 	idents := identSet{}
 	// pkg/cmd/upgrade.go always declares newUpgradeCmd; claiming it here
 	// forces a spec operation that would derive the same Ident to Upgrade2
@@ -181,8 +235,115 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	}
 	m.ManPages = append(m.ManPages, m.Binary+".1")
 	sort.Strings(m.ManPages)
+	m.MockRoutes = append(m.MockRoutes, m.Ops...)
+	sort.SliceStable(m.MockRoutes, func(i, j int) bool {
+		if m.MockRoutes[i].MockPath != m.MockRoutes[j].MockPath {
+			return m.MockRoutes[i].MockPath < m.MockRoutes[j].MockPath
+		}
+		return m.MockRoutes[i].Method < m.MockRoutes[j].Method
+	})
 	m.Long = m.buildLong()
 	return m
+}
+
+// buildSecurity turns each components/securitySchemes entry into its
+// generated root flag, env var, and Go local var name. Flag and var names
+// are claimed against root.go.tmpl's own fixed identifiers so a scheme name
+// like "header" can never collide with the persistent --header flag.
+func (m *repoModel) buildSecurity(schemes []ir.SecurityScheme) []*securityView {
+	if len(schemes) == 0 {
+		return nil
+	}
+	flags := identSet{}
+	for _, f := range []string{
+		"base-url", "max-retries", "no-retries", "retry-max-elapsed-time", "timeout", "debug", "debug-unsafe", "header",
+		"format", "transform", "transform-error", "format-error", "output", "include-headers", "max-pages",
+		"help", "version",
+	} {
+		flags.claim(f)
+	}
+	vars := identSet{}
+	for _, v := range []string{
+		"baseURL", "maxRetries", "noRetries", "retryMaxElapsedTime", "timeout", "debug", "debugUnsafe", "headers", "credentials", "f", "cmd",
+		"format", "transform", "transformError", "formatError", "output", "includeHeaders", "maxPages",
+	} {
+		vars.claim(v)
+	}
+	envVars := identSet{}
+	out := make([]*securityView, 0, len(schemes))
+	for _, s := range schemes {
+		kebabName := mapping.Kebab(s.Name)
+		// Two scheme names can kebab identically (apiKey/api_key), so the env
+		// var is claimed against its own set rather than derived straight
+		// from kebabName, which would otherwise collide even though Flag/
+		// VarName above already dedupe.
+		envVar := envVars.claim(upperSnake(m.Binary) + "_" + upperSnake(kebabName))
+		out = append(out, &securityView{
+			Name:       s.Name,
+			Flag:       flags.claim(kebabName),
+			VarName:    vars.claim(lowerCamel(kebabName)),
+			EnvVar:     envVar,
+			Desc:       fmt.Sprintf("credential for the %s security scheme (env %s)", s.Name, envVar),
+			Type:       s.Type,
+			HTTPScheme: s.Scheme,
+			In:         s.In,
+			Param:      s.Param,
+		})
+	}
+	return out
+}
+
+// wireParams collects apiKey schemes' Param names for the redaction set,
+// lowercased and deduped — multiple schemes commonly reuse the same wire
+// name (e.g. an "api_key" query param and cookie), which would otherwise
+// emit a duplicate map key into the generated literal.
+func wireParams(schemes []*securityView) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range schemes {
+		if s.Type != "apiKey" {
+			continue
+		}
+		lower := strings.ToLower(s.Param)
+		if !seen[lower] {
+			seen[lower] = true
+			out = append(out, lower)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// securityLit renders a verb's security OR-list as a Go [][]string literal
+// for the do() call; do() treats a "nil"-length result identically to a
+// declared-but-empty one, so nil is fine when the operation has none.
+func securityLit(reqs []ir.SecurityRequirement) string {
+	if len(reqs) == 0 {
+		return "nil"
+	}
+	alts := make([]string, len(reqs))
+	for i, r := range reqs {
+		quoted := make([]string, len(r.Schemes))
+		for j, s := range r.Schemes {
+			quoted[j] = fmt.Sprintf("%q", s)
+		}
+		alts[i] = "{" + strings.Join(quoted, ", ") + "}"
+	}
+	return "[][]string{" + strings.Join(alts, ", ") + "}"
+}
+
+func upperSnake(kebab string) string {
+	return strings.ToUpper(strings.ReplaceAll(kebab, "-", "_"))
+}
+
+func lowerCamel(kebab string) string {
+	s := goExported(kebab)
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToLower(r[0])
+	return string(r)
 }
 
 // buildLong composes root.Long: the same Tagline the Makefile shows, then a
@@ -196,6 +357,9 @@ func (m *repoModel) buildLong() string {
 		b.WriteString("\n\n")
 	}
 	fmt.Fprintf(&b, "Quickstart:\n  %s %s\n  %s --help\n", m.Binary, m.ExampleUse(), m.Binary)
+	if len(m.Security) > 0 {
+		fmt.Fprintf(&b, "\nAuth: --%s or %s (see README)\n", m.Security[0].Flag, m.Security[0].EnvVar)
+	}
 	if m.RepoOwner != "OWNER" {
 		fmt.Fprintf(&b, "\nDocs: https://github.com/%s/%s", m.RepoOwner, m.RepoName)
 	}
@@ -232,13 +396,17 @@ func (m *repoModel) buildResource(c *ir.Command, chain []string, parentDir strin
 func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verbView {
 	m.ManPages = append(m.ManPages, m.Binary+"-"+strings.Join(append(append([]string(nil), chain...), v.Name), "-")+".1")
 	vv := &verbView{
-		Use:        v.Name,
-		Short:      firstLine(v.Summary),
-		Aliases:    v.Aliases,
-		Deprecated: v.Deprecated,
-		Ident:      idents.claim(goExported(append(append([]string(nil), chain...), v.Name)...)),
-		Method:     v.Method,
-		Path:       v.Path,
+		Use:         v.Name,
+		Short:       firstLine(v.Summary),
+		Aliases:     v.Aliases,
+		Deprecated:  v.Deprecated,
+		Ident:       idents.claim(goExported(append(append([]string(nil), chain...), v.Name)...)),
+		Method:      v.Method,
+		Path:        v.Path,
+		Multipart:   v.Multipart,
+		SecurityLit: securityLit(v.Security),
+		Pagination:  v.Pagination,
+		SSE:         v.SSE,
 	}
 	if vv.Short == "" {
 		vv.Short = v.Method + " " + v.Path
@@ -251,6 +419,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 			Name:        f.Name,
 			Description: firstLine(f.Description),
 			Type:        f.Type,
+			Format:      f.Format,
 			Required:    f.Required,
 			Repeated:    f.Repeated,
 			Wire:        f.Param,
@@ -269,6 +438,10 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 				vv.WholeBody = fv
 			} else {
 				fv.BodyPathLit = goStringSliceLit(f.BodyPath)
+				// ponytail: part name is the leaf body segment; nested
+				// multipart schemas sharing a leaf collide — diagnose if
+				// real specs ever hit it
+				fv.Wire = f.BodyPath[len(f.BodyPath)-1]
 				vv.BodyFlags = append(vv.BodyFlags, fv)
 			}
 		}
@@ -276,6 +449,14 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 	}
 
 	vv.PathExpr = pathExpr(v.Path, vv.PathFlags)
+
+	words := append(append([]string(nil), chain...), v.Name)
+	vv.SmokeName = strings.Join(words, " ")
+	vv.SmokeArgsLit = goStringSliceLit(smokeArgs(words, v))
+	vv.SmokeSkip = smokeSkip(v, vv.PathFlags)
+	vv.MockPath = routePath(v.Path)
+	vv.MockStatus, vv.MockType, vv.MockBody = m.synth.mockResponse(m.opsByRoute[v.Method+" "+v.Path], v.SSE)
+
 	m.Ops = append(m.Ops, vv)
 	return vv
 }
@@ -334,6 +515,17 @@ func pathExpr(path string, pathFlags []*flagView) string {
 		parts = append(parts, fmt.Sprintf("%q", rest))
 	}
 	return strings.Join(parts, " + ")
+}
+
+// substituteServerVariables fills a server URL template's {name} placeholders
+// with each variable's default value, e.g. "{region}.api.example.com" ->
+// "us-east.api.example.com".
+func substituteServerVariables(s ir.Server) string {
+	url := s.URL
+	for _, v := range s.Variables {
+		url = strings.ReplaceAll(url, "{"+v.Name+"}", v.Default)
+	}
+	return url
 }
 
 func goStringSliceLit(ss []string) string {

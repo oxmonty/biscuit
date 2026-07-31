@@ -37,7 +37,11 @@ func newCelestialBodiesCreateCmd(f *factory.Factory) *cobra.Command {
 			req := &client.CelestialBodiesCreateRequest{}
 			if cmd.Flags().Changed("body") {
 				v, _ := cmd.Flags().GetString("body")
-				jv, err := cmdutil.Coerce(v, "json")
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "body", err)
+				}
+				jv, err := cmdutil.Coerce(ev, "json")
 				if err != nil {
 					return fmt.Errorf("--%s: %w", "body", err)
 				}
@@ -51,7 +55,7 @@ func newCelestialBodiesCreateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().String("body", "", "A celestial body which can be either a planet or a satellite")

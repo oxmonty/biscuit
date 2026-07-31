@@ -5,6 +5,7 @@ package signup
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -37,7 +38,11 @@ func newUserSignupCreateCmd(f *factory.Factory) *cobra.Command {
 			body := map[string]any{}
 			if cmd.Flags().Changed("email") {
 				v, _ := cmd.Flags().GetString("email")
-				cmdutil.SetPath(body, []string{"email"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "email", err)
+				}
+				cmdutil.SetPath(body, []string{"email"}, ev)
 			}
 			if cmd.Flags().Changed("id") {
 				v, _ := cmd.Flags().GetInt64("id")
@@ -45,11 +50,19 @@ func newUserSignupCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("name") {
 				v, _ := cmd.Flags().GetString("name")
-				cmdutil.SetPath(body, []string{"name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "name", err)
+				}
+				cmdutil.SetPath(body, []string{"name"}, ev)
 			}
 			if cmd.Flags().Changed("password") {
 				v, _ := cmd.Flags().GetString("password")
-				cmdutil.SetPath(body, []string{"password"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "password", err)
+				}
+				cmdutil.SetPath(body, []string{"password"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)
@@ -62,7 +75,7 @@ func newUserSignupCreateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().String("email", "", "")

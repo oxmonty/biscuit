@@ -12,7 +12,7 @@ func unionOf(t *testing.T, schemas map[string]*ir.Schema, s *ir.Schema) *ir.Unio
 	op := &ir.Operation{Method: "POST", Path: "/u", RequestBody: []ir.MediaType{
 		{Type: "application/json", Schema: obj(ir.Property{Name: "value", Schema: s})},
 	}}
-	for _, f := range flagsFor(op, schemas) {
+	for _, f := range mustFlags(op, schemas) {
 		if f.Name == "value" {
 			return f.Union
 		}

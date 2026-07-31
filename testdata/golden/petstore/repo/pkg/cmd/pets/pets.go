@@ -5,6 +5,7 @@ package pets
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -45,11 +46,19 @@ func newPetsCreateCmd(f *factory.Factory) *cobra.Command {
 			}
 			if cmd.Flags().Changed("name") {
 				v, _ := cmd.Flags().GetString("name")
-				cmdutil.SetPath(body, []string{"name"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "name", err)
+				}
+				cmdutil.SetPath(body, []string{"name"}, ev)
 			}
 			if cmd.Flags().Changed("tag") {
 				v, _ := cmd.Flags().GetString("tag")
-				cmdutil.SetPath(body, []string{"tag"}, v)
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", "tag", err)
+				}
+				cmdutil.SetPath(body, []string{"tag"}, ev)
 			}
 			if len(body) > 0 {
 				b, err := json.Marshal(body)
@@ -62,7 +71,7 @@ func newPetsCreateCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().Int64("id", 0, "")
@@ -93,7 +102,7 @@ func newPetsListCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().Int64("limit", 0, "How many items to return at one time (max 100)")
@@ -119,7 +128,7 @@ func newPetsShowCmd(f *factory.Factory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
 		},
 	}
 	cmd.Flags().String("pet-id", "", "The id of the pet to retrieve")

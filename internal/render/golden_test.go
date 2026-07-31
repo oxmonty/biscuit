@@ -55,7 +55,7 @@ func renderSpec(t *testing.T, specPath string, cfg *config.Config) []File {
 	if err != nil {
 		t.Fatalf("Load(%s): %v", specPath, err)
 	}
-	api := mapping.Map(doc, mapping.OverridesFromConfig(cfg))
+	api := mapping.Map(doc, cfg)
 	files, err := Render(api, cfg, Provenance{SpecPath: filepath.Base(specPath), SpecSHA256: "golden"})
 	if err != nil {
 		t.Fatalf("Render(%s): %v", specPath, err)
@@ -140,7 +140,7 @@ func restoreFixtures(t *testing.T, name, repoDir string) {
 // commit: same biscuit + same spec must produce the same plan bytes. The
 // compile gate for these runs in TestCompileBigSpecs.
 func TestFilePlanHashes(t *testing.T) {
-	specs := []string{"museum.yaml", "train-travel.yaml", "pokeapi.yml", "openai.yaml", "stripe.yaml"}
+	specs := []string{"museum.yaml", "train-travel.yaml", "pokeapi.yml", "openai.yaml", "stripe.yaml", "paginated.yaml"}
 	hashFile := filepath.Join(goldenDir, "hashes.txt")
 
 	var lines []string
@@ -174,6 +174,9 @@ func TestFilePlanHashes(t *testing.T) {
 // TestCompileGoldenRepos is the gate that matters most: go build ./... on the
 // committed golden repos, including galaxy's internal/custom fixture — a
 // regeneration that breaks the custom/ contract fails here, in biscuit's CI.
+// It then runs each repo's own smoke suite, which drives every generated
+// command against the spec-derived mock: compile-the-output extended to
+// run-the-output.
 func TestCompileGoldenRepos(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compile gate skipped in -short")
@@ -187,10 +190,12 @@ func TestCompileGoldenRepos(t *testing.T) {
 			if _, err := os.Stat(repoDir); err != nil {
 				t.Fatalf("golden repo missing (run go test ./internal/render -update): %v", err)
 			}
-			cmd := exec.Command("go", "build", "./...")
-			cmd.Dir = repoDir
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Errorf("go build ./... failed:\n%s", out)
+			for _, args := range [][]string{{"build", "./..."}, {"test", "./..."}} {
+				cmd := exec.Command("go", args...)
+				cmd.Dir = repoDir
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Errorf("go %s failed:\n%s", strings.Join(args, " "), out)
+				}
 			}
 		})
 	}
@@ -224,6 +229,10 @@ func CreateChatCompletionRaw(ctx context.Context, baseURL string, body []byte) (
 // dir, builds it, and throws the result away — full compile coverage with no
 // committed bytes. The openai run also carries a custom fixture, so the
 // custom/ contract gate covers the hardest spec.
+//
+// go test follows go build so each repo's generated smoke suite runs too — go
+// build alone never compiles test files, and these specs are where the odd
+// shapes live (stripe's 587 commands run in under two seconds).
 func TestCompileBigSpecs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compile gate skipped in -short")
@@ -241,10 +250,12 @@ func TestCompileBigSpecs(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			cmd := exec.Command("go", "build", "./...")
-			cmd.Dir = dir
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Errorf("go build ./... failed:\n%s", out)
+			for _, args := range [][]string{{"build", "./..."}, {"test", "./..."}} {
+				cmd := exec.Command("go", args...)
+				cmd.Dir = dir
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Errorf("go %s failed:\n%s", strings.Join(args, " "), out)
+				}
 			}
 		})
 	}

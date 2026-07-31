@@ -54,7 +54,57 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 {{- end}}
 			}
 {{- end}}
+{{- if .Multipart}}
 {{- if .BodyFlags}}
+			var parts []cmdutil.MultipartPart
+{{- range .BodyFlags}}
+			if cmd.Flags().Changed({{q .Name}}) {
+{{- if .Repeated}}
+				vs, _ := cmd.Flags().GetStringArray({{q .Name}})
+				for _, s := range vs {
+{{- if eq .Type "string"}}
+					ev, err := cmdutil.ExpandArg(s)
+					if err != nil {
+						return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+					}
+					parts = append(parts, cmdutil.MultipartPart{Name: {{q .Wire}}, Value: ev})
+{{- else}}
+					parts = append(parts, cmdutil.MultipartPart{Name: {{q .Wire}}, Value: s})
+{{- end}}
+				}
+{{- else if eq .Format "binary"}}
+				v, _ := cmd.Flags().GetString({{q .Name}})
+				data, filename, err := cmdutil.ExpandFilePart(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				parts = append(parts, cmdutil.MultipartPart{Name: {{q .Wire}}, File: data, Filename: filename})
+{{- else if eq .Type "string"}}
+				v, _ := cmd.Flags().GetString({{q .Name}})
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				parts = append(parts, cmdutil.MultipartPart{Name: {{q .Wire}}, Value: ev})
+{{- else}}
+				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
+				parts = append(parts, cmdutil.MultipartPart{Name: {{q .Wire}}, Value: {{.WireExpr}}})
+{{- end}}
+			}
+{{- end}}
+			if len(parts) > 0 {
+				b, ct, err := cmdutil.BuildMultipart(parts)
+				if err != nil {
+					return err
+				}
+				if req.Header == nil {
+					req.Header = http.Header{}
+				}
+				req.Header.Set("Content-Type", ct)
+				req.Body = b
+			}
+{{- end}}
+{{- else if .BodyFlags}}
 			body := map[string]any{}
 {{- range .BodyFlags}}
 			if cmd.Flags().Changed({{q .Name}}) {
@@ -62,7 +112,15 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 				vs, _ := cmd.Flags().GetStringArray({{q .Name}})
 				items := make([]any, 0, len(vs))
 				for _, s := range vs {
+{{- if eq .Type "string"}}
+					ev, err := cmdutil.ExpandArg(s)
+					if err != nil {
+						return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+					}
+					jv, err := cmdutil.Coerce(ev, {{q .Type}})
+{{- else}}
 					jv, err := cmdutil.Coerce(s, {{q .Type}})
+{{- end}}
 					if err != nil {
 						return fmt.Errorf("--%s: %w", {{q .Name}}, err)
 					}
@@ -76,6 +134,13 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
 				}
 				cmdutil.SetPath(body, {{.BodyPathLit}}, jv)
+{{- else if eq .Type "string"}}
+				v, _ := cmd.Flags().GetString({{q .Name}})
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				cmdutil.SetPath(body, {{.BodyPathLit}}, ev)
 {{- else}}
 				v, _ := cmd.Flags().{{.GetCall}}({{q .Name}})
 				cmdutil.SetPath(body, {{.BodyPathLit}}, v)
@@ -93,7 +158,11 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 {{- with .WholeBody}}
 			if cmd.Flags().Changed({{q .Name}}) {
 				v, _ := cmd.Flags().GetString({{q .Name}})
-				jv, err := cmdutil.Coerce(v, "json")
+				ev, err := cmdutil.ExpandArg(v)
+				if err != nil {
+					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
+				}
+				jv, err := cmdutil.Coerce(ev, "json")
 				if err != nil {
 					return fmt.Errorf("--%s: %w", {{q .Name}}, err)
 				}
@@ -104,11 +173,31 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 				req.Body = b
 			}
 {{- end}}
+{{- if .SSE}}
+			return cmdutil.PrintStream(f.IOStreams, f.Output(), func(fn func(data []byte) error) (*client.Response, error) {
+				return cl.{{.Ident}}Stream(cmd.Context(), req, fn)
+			})
+{{- else if .Pagination}}
+			if req.Query == nil {
+				req.Query = url.Values{}
+			}
+			return cmdutil.WalkPages(cmd.Context(), f.IOStreams, f.Output(), f.MaxPages(), cmdutil.Pagination{
+				Type:       {{q .Pagination.Type}},
+				Param:      {{q .Pagination.Param}},
+				LimitParam: {{q .Pagination.LimitParam}},
+				ItemsPath:  {{q .Pagination.ItemsPath}},
+				NextPath:   {{q .Pagination.NextPath}},
+				NextKind:   {{q .Pagination.NextKind}},
+			}, req.Query, func(ctx context.Context) (*client.Response, error) {
+				return cl.{{.Ident}}(ctx, req)
+			})
+{{- else}}
 			resp, err := cl.{{.Ident}}(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return cmdutil.PrintResponse(f.IOStreams, resp)
+			return cmdutil.PrintResponse(f.IOStreams, resp, f.Output())
+{{- end}}
 		},
 	}
 {{- range .Flags}}

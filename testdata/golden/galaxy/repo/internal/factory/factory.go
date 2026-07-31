@@ -6,10 +6,13 @@ package factory
 
 import (
 	"github.com/oxmonty/galaxy-cli/internal/client"
+	"github.com/oxmonty/galaxy-cli/internal/cmdutil"
 	"github.com/oxmonty/galaxy-cli/internal/iostreams"
 )
 
 type Factory struct {
 	IOStreams *iostreams.IOStreams
 	Client    func() (*client.Client, error)
+	Output    func() *cmdutil.OutputOptions
+	MaxPages  func() int
 }

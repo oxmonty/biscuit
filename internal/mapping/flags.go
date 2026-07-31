@@ -29,11 +29,19 @@ const (
 	hardDepthBound = 8
 )
 
-func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
+// flagsFor derives one operation's flags, plus any diagnostics from flags it
+// had to drop (a name that sanitizes to empty is worse than no flag at all —
+// an uninvocable command).
+func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) ([]ir.Flag, []string) {
 	fl := &flattener{schemas: schemas}
 	var flags []ir.Flag
+	var diags []string
 	taken := map[string]bool{}
 	add := func(f ir.Flag) {
+		if f.Name == "" {
+			diags = append(diags, emptyFlagDiagnostic(op, &f))
+			return
+		}
 		// a body flag colliding with a parameter flag keeps a body. prefix;
 		// numeric suffixes cover the pathological rest, deterministically
 		if taken[f.Name] {
@@ -63,7 +71,13 @@ func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
 	}
 
 	if body := jsonBodySchema(op); body != nil {
-		if root := fl.resolve(body, nil); root != nil && len(root.Properties) > 0 {
+		// Must agree with expand's own expandable() check below: a root that
+		// has properties but also a oneOf/anyOf (openai's vector-store batch
+		// request uses anyOf as an at-least-one-of constraint, not variant
+		// branching) is not expandable, and expand() would otherwise fall
+		// through to its leaf case on the first call — where path is still
+		// nil, producing an empty flag name instead of a "body" json flag.
+		if root := fl.resolve(body, nil); root != nil && expandable(root) {
 			fl.expand(body, nil, nil, nil, fl.chooseDepth(body), true, add)
 		} else {
 			f := ir.Flag{Name: "body", In: "body", Required: true}
@@ -73,26 +87,60 @@ func flagsFor(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
 	}
 
 	sort.Slice(flags, func(i, j int) bool { return flags[i].Name < flags[j].Name })
-	return flags
+	return flags, diags
+}
+
+// emptyFlagDiagnostic describes a flag the flattener derived no usable name
+// for (e.g. a property whose name is punctuation-only, kebab-casing to ""),
+// so the caller can drop it instead of emitting cmd.Flags().String("", ...).
+func emptyFlagDiagnostic(op *ir.Operation, f *ir.Flag) string {
+	what, name := f.In+" parameter", f.Param
+	if f.In == "body" {
+		what, name = "body property", strings.Join(f.BodyPath, ".")
+	}
+	req := ""
+	if f.Required {
+		req = " (required)"
+	}
+	return fmt.Sprintf("%s %s: %s %q sanitizes to an empty flag name%s; dropped",
+		op.Method, op.Path, what, name, req)
 }
 
 // jsonBodySchema picks the flag-bearing request media type: JSON-ish first,
 // multipart/form-urlencoded otherwise (their fields flatten the same way).
 func jsonBodySchema(op *ir.Operation) *ir.Schema {
+	s, _ := pickBodyMediaType(op)
+	return s
+}
+
+// pickBodyMediaType is jsonBodySchema's selection logic, also returning the
+// chosen media type string — operationIsMultipart uses it to tell a real
+// multipart/form-data body (raw per-part bytes) from the x-www-form-urlencoded
+// fallback, which still flattens through the JSON body path today.
+func pickBodyMediaType(op *ir.Operation) (schema *ir.Schema, contentType string) {
 	var fallback *ir.Schema
+	var fallbackType string
 	for _, mt := range op.RequestBody {
 		switch {
 		case strings.Contains(mt.Type, "json"):
 			if mt.Schema != nil {
-				return mt.Schema
+				return mt.Schema, mt.Type
 			}
 		case strings.HasPrefix(mt.Type, "multipart/") || mt.Type == "application/x-www-form-urlencoded":
 			if fallback == nil {
-				fallback = mt.Schema
+				fallback, fallbackType = mt.Schema, mt.Type
 			}
 		}
 	}
-	return fallback
+	return fallback, fallbackType
+}
+
+// operationIsMultipart reports whether op's request body flattens from a
+// real multipart/form-data media type, so the execution layer builds a
+// multipart body instead of JSON-encoding format:binary fields as text.
+func operationIsMultipart(op *ir.Operation) bool {
+	_, ct := pickBodyMediaType(op)
+	return strings.HasPrefix(ct, "multipart/")
 }
 
 type flattener struct {
@@ -249,7 +297,10 @@ func (fl *flattener) fill(f *ir.Flag, s *ir.Schema) {
 		return
 	}
 	switch s.Type {
-	case "string", "boolean", "integer", "number":
+	case "string":
+		f.Type = s.Type
+		f.Format = s.Format
+	case "boolean", "integer", "number":
 		f.Type = s.Type
 	case "array":
 		f.Repeated = true

@@ -17,7 +17,7 @@ type PetsCreateRequest struct {
 
 // PetsCreate calls POST /pets. Create a pet
 func (c *Client) PetsCreate(ctx context.Context, req *PetsCreateRequest) (*Response, error) {
-	return c.do(ctx, "POST", "/pets", req.Query, req.Header, req.Body)
+	return c.do(ctx, "POST", "/pets", req.Query, req.Header, req.Body, nil)
 }
 
 // PetsListRequest carries the inputs of GET /pets.
@@ -29,7 +29,7 @@ type PetsListRequest struct {
 
 // PetsList calls GET /pets. List all pets
 func (c *Client) PetsList(ctx context.Context, req *PetsListRequest) (*Response, error) {
-	return c.do(ctx, "GET", "/pets", req.Query, req.Header, req.Body)
+	return c.do(ctx, "GET", "/pets", req.Query, req.Header, req.Body, nil)
 }
 
 // PetsShowRequest carries the inputs of GET /pets/{petId}.
@@ -42,5 +42,5 @@ type PetsShowRequest struct {
 
 // PetsShow calls GET /pets/{petId}. Info for a specific pet
 func (c *Client) PetsShow(ctx context.Context, req *PetsShowRequest) (*Response, error) {
-	return c.do(ctx, "GET", "/pets/"+url.PathEscape(req.PetId), req.Query, req.Header, req.Body)
+	return c.do(ctx, "GET", "/pets/"+url.PathEscape(req.PetId), req.Query, req.Header, req.Body, nil)
 }

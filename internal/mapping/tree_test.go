@@ -10,7 +10,7 @@ import (
 func derive(ops []ir.Operation, tags ...ir.Tag) *ir.API {
 	api := &ir.API{Operations: ops, Tags: tags}
 	sortOperations(api.Operations)
-	deriveCommands(api, nil)
+	deriveCommands(api, nil, builtinSchemes)
 	return api
 }
 

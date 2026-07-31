@@ -14,7 +14,7 @@ import (
 // path has no static segments. Verbs come from operationIds with resource/tag
 // stutter stripped (Speakeasy's disclosed heuristic), falling back to
 // method+shape names when the id is missing or reduces to a bare HTTP verb.
-func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
+func deriveCommands(api *ir.API, overrides map[string]ir.Override, schemes []Scheme) {
 	effective := make([]ir.Override, len(api.Operations))
 	matched := make(map[string]bool, len(overrides))
 	for i := range api.Operations {
@@ -51,6 +51,7 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
 	for _, s := range api.Schemas {
 		schemaIdx[s.Name] = s.Schema
 	}
+	fl := &flattener{schemas: schemaIdx}
 
 	root := newNode("")
 	for i := range api.Operations {
@@ -83,6 +84,12 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
 				"command %q: %s %s and %s %s both map to verb %q; renamed the latter to %q — set an override in biscuit.yaml to choose better names",
 				strings.Join(chain, " "), prev.Method, prev.Path, op.Method, op.Path, verb, name))
 		}
+		pagination, diag := resolvePagination(op, ov.Pagination, schemes, fl)
+		if diag != "" {
+			api.Diagnostics = append(api.Diagnostics, diag)
+		}
+		flags, flagDiags := flagsFor(op, schemaIdx)
+		api.Diagnostics = append(api.Diagnostics, flagDiags...)
 		v := &ir.Verb{
 			Name:        name,
 			Method:      op.Method,
@@ -90,8 +97,11 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override) {
 			OperationID: op.ID,
 			Summary:     op.Summary,
 			Deprecated:  op.Deprecated,
-			Pagination:  ov.Pagination,
-			Flags:       flagsFor(op, schemaIdx),
+			Pagination:  pagination,
+			Flags:       flags,
+			Multipart:   operationIsMultipart(op),
+			Security:    op.Security,
+			SSE:         isSSE(op),
 		}
 		for _, a := range ov.Aliases {
 			v.Aliases = append(v.Aliases, kebab(a))

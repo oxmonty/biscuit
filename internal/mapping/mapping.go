@@ -6,6 +6,7 @@ package mapping
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -19,9 +20,9 @@ import (
 	"github.com/oxmonty/biscuit/internal/spec"
 )
 
-// OverridesFromConfig lifts the sidecar's per-operation entries into the
-// shape Map applies.
-func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
+// overridesFromConfig lifts the sidecar's per-operation entries into the
+// shape deriveCommands applies.
+func overridesFromConfig(cfg *config.Config) map[string]ir.Override {
 	if cfg == nil || len(cfg.Operations) == 0 {
 		return nil
 	}
@@ -38,10 +39,11 @@ func OverridesFromConfig(cfg *config.Config) map[string]ir.Override {
 	return overrides
 }
 
-// Map converts a loaded spec into the sorted, normalized IR. overrides is
-// biscuit.yaml's per-operation set, keyed by operationId or "METHOD /path";
-// in-spec x-biscuit-* extensions merge beneath it, sidecar winning field-wise.
-func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
+// Map converts a loaded spec into the sorted, normalized IR. cfg supplies the
+// per-operation overrides (keyed by operationId or "METHOD /path", with
+// in-spec x-biscuit-* extensions merging beneath them, sidecar winning
+// field-wise) and any declared pagination schemes; a nil cfg means neither.
+func Map(doc *spec.Document, cfg *config.Config) *ir.API {
 	m := doc.Model
 	api := &ir.API{
 		SpecVersion: m.Version,
@@ -53,7 +55,14 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	}
 
 	for _, s := range m.Servers {
-		api.Servers = append(api.Servers, ir.Server{URL: s.URL, Description: s.Description})
+		srv := ir.Server{URL: s.URL, Description: s.Description}
+		if s.Variables != nil {
+			for name, v := range s.Variables.FromOldest() {
+				srv.Variables = append(srv.Variables, ir.ServerVariable{Name: name, Default: v.Default, Enum: v.Enum})
+			}
+			sort.Slice(srv.Variables, func(i, j int) bool { return srv.Variables[i].Name < srv.Variables[j].Name })
+		}
+		api.Servers = append(api.Servers, srv)
 	}
 	sort.Slice(api.Servers, func(i, j int) bool { return api.Servers[i].URL < api.Servers[j].URL })
 
@@ -62,16 +71,31 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 	}
 	sort.Slice(api.Tags, func(i, j int) bool { return api.Tags[i].Name < api.Tags[j].Name })
 
+	globalSecurity := mapSecurity(m.Security)
 	if m.Paths != nil {
 		for path, item := range m.Paths.PathItems.FromOldest() {
-			api.Operations = append(api.Operations, mapPathItem(path, item)...)
+			// Path templates must not carry a query string (RFC 3986 / OpenAPI
+			// path-item keys); a spec that does anyway (openai's
+			// "/responses?beta=true") would otherwise leak "?beta=true" into
+			// resource naming and the request URL. Strip it before it enters
+			// mapping and note what got dropped.
+			cleanPath, query, hasQuery := strings.Cut(path, "?")
+			ops := mapPathItem(cleanPath, item, globalSecurity)
+			if hasQuery {
+				for _, op := range ops {
+					api.Diagnostics = append(api.Diagnostics, fmt.Sprintf(
+						"path %q: dropped query string %q from %s %s (path templates must not contain a query component)",
+						path, query, op.Method, cleanPath))
+				}
+			}
+			api.Operations = append(api.Operations, ops...)
 		}
 	}
 	sortOperations(api.Operations)
 
 	if m.Webhooks != nil {
 		for name, item := range m.Webhooks.FromOldest() {
-			api.Webhooks = append(api.Webhooks, mapPathItem(name, item)...)
+			api.Webhooks = append(api.Webhooks, mapPathItem(name, item, globalSecurity)...)
 		}
 	}
 	sortOperations(api.Webhooks)
@@ -97,8 +121,42 @@ func Map(doc *spec.Document, overrides map[string]ir.Override) *ir.API {
 		}
 	}
 
-	deriveCommands(api, overrides)
+	deriveCommands(api, overridesFromConfig(cfg), schemesFor(cfg))
 	return api
+}
+
+// mapSecurity converts one operation's (or the document's global) security
+// requirement OR-list into the IR shape: each alternative's scheme names
+// sorted, and the alternatives themselves sorted (shortest, then lexical)
+// so generated output is deterministic regardless of spec authoring order.
+func mapSecurity(reqs []*base.SecurityRequirement) []ir.SecurityRequirement {
+	if reqs == nil {
+		return nil
+	}
+	out := make([]ir.SecurityRequirement, 0, len(reqs))
+	for _, r := range reqs {
+		var schemes []string
+		if r.Requirements != nil {
+			for name := range r.Requirements.FromOldest() {
+				schemes = append(schemes, name)
+			}
+		}
+		sort.Strings(schemes)
+		out = append(out, ir.SecurityRequirement{Schemes: schemes})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Schemes, out[j].Schemes
+		if len(a) != len(b) {
+			return len(a) < len(b)
+		}
+		for k := range a {
+			if a[k] != b[k] {
+				return a[k] < b[k]
+			}
+		}
+		return false
+	})
+	return out
 }
 
 func sortOperations(ops []ir.Operation) {
@@ -110,7 +168,7 @@ func sortOperations(ops []ir.Operation) {
 	})
 }
 
-func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
+func mapPathItem(path string, item *v3.PathItem, globalSecurity []ir.SecurityRequirement) []ir.Operation {
 	var ops []ir.Operation
 	for method, op := range item.GetOperations().FromOldest() {
 		mapped := ir.Operation{
@@ -120,6 +178,12 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 			Summary:     op.Summary,
 			Description: op.Description,
 			Deprecated:  op.Deprecated != nil && *op.Deprecated,
+			Security:    globalSecurity,
+		}
+		// op.Security != nil (even an explicit empty []) overrides the global
+		// default entirely — the OpenAPI security-requirement-object contract.
+		if op.Security != nil {
+			mapped.Security = mapSecurity(op.Security)
 		}
 		mapped.Tags = append(mapped.Tags, op.Tags...)
 		sort.Strings(mapped.Tags)
@@ -165,6 +229,7 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 					Status:      status,
 					Description: resp.Description,
 					Content:     mapContent(resp.Content),
+					Headers:     headerNames(resp.Headers),
 				})
 			}
 			if op.Responses.Default != nil {
@@ -172,6 +237,7 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 					Status:      "default",
 					Description: op.Responses.Default.Description,
 					Content:     mapContent(op.Responses.Default.Content),
+					Headers:     headerNames(op.Responses.Default.Headers),
 				})
 			}
 			sort.Slice(mapped.Responses, func(i, j int) bool {
@@ -181,6 +247,21 @@ func mapPathItem(path string, item *v3.PathItem) []ir.Operation {
 		ops = append(ops, mapped)
 	}
 	return ops
+}
+
+// headerNames collects a response's documented header names. Pagination
+// detection reads them: a Link header is only a next-page signal when the
+// spec says the endpoint sends one.
+func headerNames(headers *orderedmap.Map[string, *v3.Header]) []string {
+	if headers == nil {
+		return nil
+	}
+	var names []string
+	for name := range headers.FromOldest() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func mapContent(content *orderedmap.Map[string, *v3.MediaType]) []ir.MediaType {

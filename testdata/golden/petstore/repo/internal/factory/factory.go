@@ -6,10 +6,13 @@ package factory
 
 import (
 	"github.com/oxmonty/petstore-cli/internal/client"
+	"github.com/oxmonty/petstore-cli/internal/cmdutil"
 	"github.com/oxmonty/petstore-cli/internal/iostreams"
 )
 
 type Factory struct {
 	IOStreams *iostreams.IOStreams
 	Client    func() (*client.Client, error)
+	Output    func() *cmdutil.OutputOptions
+	MaxPages  func() int
 }

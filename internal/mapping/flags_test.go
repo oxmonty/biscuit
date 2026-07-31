@@ -3,6 +3,7 @@ package mapping
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/oxmonty/biscuit/internal/ir"
@@ -22,6 +23,13 @@ func flagNames(flags []ir.Flag) []string {
 	return out
 }
 
+// mustFlags discards diagnostics for tests that only care about the flags
+// themselves; TestFlagsEmptyNameDropped below covers the diagnostic path.
+func mustFlags(op *ir.Operation, schemas map[string]*ir.Schema) []ir.Flag {
+	flags, _ := flagsFor(op, schemas)
+	return flags
+}
+
 func TestFlagsFromParams(t *testing.T) {
 	// given: path, query, and cookie parameters
 	op := &ir.Operation{Method: "GET", Path: "/users/{userId}", Params: []ir.Param{
@@ -31,7 +39,7 @@ func TestFlagsFromParams(t *testing.T) {
 	}}
 
 	// then: path params are required, names kebab-cased, cookies deferred
-	flags := flagsFor(op, nil)
+	flags := mustFlags(op, nil)
 	if got := flagNames(flags); !reflect.DeepEqual(got, []string{"page-size", "user-id"}) {
 		t.Fatalf("flags = %v", got)
 	}
@@ -58,7 +66,7 @@ func TestFlagsBodyDotNotation(t *testing.T) {
 	}}
 
 	// then: nested objects expand into dot notation with original paths kept
-	flags := flagsFor(op, nil)
+	flags := mustFlags(op, nil)
 	want := []string{"address.city", "name.first", "name.last"}
 	if got := flagNames(flags); !reflect.DeepEqual(got, want) {
 		t.Fatalf("flags = %v, want %v", got, want)
@@ -81,7 +89,7 @@ func TestFlagsRequiredPropagation(t *testing.T) {
 
 	// then: required holds only where the whole ancestor chain is required
 	byName := map[string]ir.Flag{}
-	for _, f := range flagsFor(op, nil) {
+	for _, f := range mustFlags(op, nil) {
 		byName[f.Name] = f
 	}
 	if !byName["name.first"].Required {
@@ -105,7 +113,7 @@ func TestFlagsArrays(t *testing.T) {
 
 	// then: scalar items repeat as strings, object items repeat as json
 	byName := map[string]ir.Flag{}
-	for _, f := range flagsFor(op, nil) {
+	for _, f := range mustFlags(op, nil) {
 		byName[f.Name] = f
 	}
 	if f := byName["tags"]; !f.Repeated || f.Type != "string" {
@@ -130,7 +138,7 @@ func TestFlagsCycleFallsBackToJSON(t *testing.T) {
 
 	// then: expansion terminates; the cyclic subtree is a json flag
 	byName := map[string]ir.Flag{}
-	for _, f := range flagsFor(op, schemas) {
+	for _, f := range mustFlags(op, schemas) {
 		byName[f.Name] = f
 	}
 	if f := byName["child"]; f.Type != "json" {
@@ -156,7 +164,7 @@ func TestFlagsAdaptiveDepthCapsExplosion(t *testing.T) {
 	}}
 
 	// then: depth adapts down to 1 — ten json flags, no dot expansion
-	flags := flagsFor(op, nil)
+	flags := mustFlags(op, nil)
 	if len(flags) != 10 {
 		t.Fatalf("len = %d, want 10", len(flags))
 	}
@@ -176,7 +184,7 @@ func TestFlagsOneOfIsJSONUntilCascade(t *testing.T) {
 	}}
 
 	// then: it stays one json flag (the discriminator cascade refines this)
-	flags := flagsFor(op, nil)
+	flags := mustFlags(op, nil)
 	if len(flags) != 1 || flags[0].Type != "json" {
 		t.Fatalf("flags = %+v", flags)
 	}
@@ -197,7 +205,7 @@ func TestFlagsAllOfMerges(t *testing.T) {
 
 	// then: member properties merge into one flag set
 	want := []string{"id", "name"}
-	if got := flagNames(flagsFor(op, schemas)); !reflect.DeepEqual(got, want) {
+	if got := flagNames(mustFlags(op, schemas)); !reflect.DeepEqual(got, want) {
 		t.Fatalf("flags = %v, want %v", got, want)
 	}
 }
@@ -219,7 +227,7 @@ func TestFlagsAllOfDeduplicatesRedeclaredProperties(t *testing.T) {
 
 	// then: one flag per property name, no body./-2 collision suffixes
 	want := []string{"model", "top-logprobs"}
-	if got := flagNames(flagsFor(op, schemas)); !reflect.DeepEqual(got, want) {
+	if got := flagNames(mustFlags(op, schemas)); !reflect.DeepEqual(got, want) {
 		t.Fatalf("flags = %v, want %v", got, want)
 	}
 }
@@ -234,7 +242,7 @@ func TestFlagsParamBodyCollision(t *testing.T) {
 
 	// then: the body flag keeps a body. prefix, deterministically
 	want := []string{"body.filter", "filter"}
-	if got := flagNames(flagsFor(op, nil)); !reflect.DeepEqual(got, want) {
+	if got := flagNames(mustFlags(op, nil)); !reflect.DeepEqual(got, want) {
 		t.Fatalf("flags = %v, want %v", got, want)
 	}
 }
@@ -246,9 +254,94 @@ func TestFlagsScalarBodyIsSingleBodyFlag(t *testing.T) {
 	}}
 
 	// then: it maps to one required --body flag
-	flags := flagsFor(op, nil)
+	flags := mustFlags(op, nil)
 	if len(flags) != 1 || flags[0].Name != "body" || !flags[0].Required {
 		t.Fatalf("flags = %+v", flags)
+	}
+}
+
+func TestFlagsAnyOfRequiredConstraintFallsBackToBodyJSON(t *testing.T) {
+	// given: a body with real properties plus an anyOf used as an
+	// at-least-one-of *required* constraint, not variant branching (openai's
+	// CreateVectorStoreFileBatchRequest shape: `anyOf: [{required: [file_ids]},
+	// {required: [files]}]` alongside file_ids/files/... properties)
+	op := &ir.Operation{Method: "POST", Path: "/batches", RequestBody: []ir.MediaType{
+		{Type: "application/json", Schema: &ir.Schema{
+			Type: "object",
+			Properties: []ir.Property{
+				{Name: "file_ids", Schema: &ir.Schema{Type: "array", Items: str()}},
+				{Name: "files", Schema: &ir.Schema{Type: "array", Items: str()}},
+			},
+			AnyOf: []*ir.Schema{
+				{Required: []string{"file_ids"}},
+				{Required: []string{"files"}},
+			},
+		}},
+	}}
+
+	// then: it degrades to a single named --body json flag, not the empty-named,
+	// uninvocable flag the mismatched expandability checks used to produce
+	flags, diags := flagsFor(op, nil)
+	if len(flags) != 1 || flags[0].Name != "body" || flags[0].Type != "json" {
+		t.Fatalf("flags = %+v", flags)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diags = %v, want none", diags)
+	}
+}
+
+func TestFlagsEmptyNameDropped(t *testing.T) {
+	// given: a body property whose name sanitizes to an empty flag name
+	op := &ir.Operation{Method: "POST", Path: "/odd", RequestBody: []ir.MediaType{
+		{Type: "application/json", Schema: obj(
+			ir.Property{Name: "___", Schema: str()},
+			ir.Property{Name: "ok", Schema: str()},
+		)},
+	}}
+
+	// then: the unnamed flag is dropped with a diagnostic naming the operation
+	// and the offending property; the rest survive
+	flags, diags := flagsFor(op, nil)
+	if got := flagNames(flags); !reflect.DeepEqual(got, []string{"ok"}) {
+		t.Errorf("flags = %v, want [ok]", got)
+	}
+	if len(diags) != 1 || !strings.Contains(diags[0], "___") || !strings.Contains(diags[0], "POST /odd") {
+		t.Errorf("diags = %v, want one naming POST /odd and property ___", diags)
+	}
+}
+
+func TestFlagsMultipartFormatBinary(t *testing.T) {
+	// given: galaxy's uploadImage operation, a multipart/form-data body with
+	// a single format:binary property
+	api := mustMap(t, ladder+"galaxy.yaml")
+	var verb *ir.Verb
+	var walk func([]ir.Command)
+	walk = func(cmds []ir.Command) {
+		for _, c := range cmds {
+			for i := range c.Verbs {
+				if c.Verbs[i].OperationID == "uploadImage" {
+					verb = &c.Verbs[i]
+				}
+			}
+			walk(c.Children)
+		}
+	}
+	walk(api.Commands)
+	if verb == nil {
+		t.Fatal("uploadImage not found")
+	}
+
+	// then: the verb is flagged multipart, and its file property keeps its
+	// binary format so the execution layer sends it as a file part
+	if !verb.Multipart {
+		t.Error("uploadImage.Multipart = false, want true")
+	}
+	byName := map[string]ir.Flag{}
+	for _, f := range verb.Flags {
+		byName[f.Name] = f
+	}
+	if f := byName["image"]; f.Type != "string" || f.Format != "binary" {
+		t.Errorf("image = %+v, want string flag with format binary", f)
 	}
 }
 

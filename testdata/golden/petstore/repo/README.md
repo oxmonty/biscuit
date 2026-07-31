@@ -31,6 +31,53 @@ petstore --help
 petstore pets create
 ```
 
+## Output control
+
+- `--format auto|json|jsonl|pretty|raw|yaml` — `auto` (default) is `pretty` on a terminal, compact JSON when piped. `pretty` syntax-highlights (disabled by `NO_COLOR` or a non-terminal).
+- `--transform '<gjson path>'` — extract part of a successful response body ([GJSON path syntax](https://github.com/tidwall/gjson#path-syntax)); the result still goes through `--format`. `--transform-error` does the same for error (4xx/5xx) bodies, and `--format-error` overrides `--format` for them.
+- `--output/-o <path>` — write the response body to a file instead of stdout. `-o auto` derives a filename from the response (Content-Disposition, else the URL) and won't clobber an existing file; `-o -` forces stdout.
+- `--include-headers` — print the response status and headers before the body.
+
+SSE endpoints (`text/event-stream` responses) stream as line-per-event JSONL by default, composing with `--transform` the same way a buffered response does. The interactive terminal experience (a chat-style TUI rendering tokens as they arrive) is coming in a later release; for now every invocation gets plain line streaming.
+
+## Pagination
+
+Commands whose endpoint paginates walk every page for you and print the items as one result: no cursor juggling, no `--page` loop. `--max-pages N` bounds the walk; the default, `0`, walks to exhaustion. Streaming formats (`--format jsonl`, `--format raw`, and `auto` when piped) print each page's items as they arrive; the document formats accumulate them into one merged array.
+
+Which commands paginate is decided at generation time, by matching each endpoint against the schemes declared in `biscuit.yaml` plus a built-in library of the common conventions (cursor, offset/limit, page number, `Link` header). A command with no match fetches exactly one page. Run `biscuit generate --dry-run` to see which commands were matched.
+
+## File arguments
+
+A body flag (including `--body`) starting with `@` reads from a file instead of taking the value literally: `@path` and `@file://path` read `path`, sniffing it as text (kept as-is) or binary (base64-encoded, since JSON has no raw-byte type). `@data://literal` passes `literal` through unchanged with no file read — useful when a real value happens to start with `@`. A leading `\@` also escapes to a literal `@`. Operations that take a file upload (`multipart/form-data`) send the file's raw bytes as its own part instead.
+
+```sh
+petstore ... --body @request.json
+petstore ... --body @file:///abs/path/request.json
+petstore ... --some-field @data://@not-a-file
+```
+
+## Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Success |
+| 1 | Internal error |
+| 2 | Usage error (bad flags/arguments) |
+| 3 | Auth failure (HTTP 401/403, or a required credential not set) |
+| 4 | Other 4xx API error |
+| 5 | 5xx API error |
+| 6 | Network/transport error |
+
+## Testing
+
+This repo ships its own test double: `internal/mock` is a server derived from the API spec, where every operation answers on its own route with a canned, schema-valid response and records the request it received. Next to it sits a generated smoke suite that drives every command in the tree against that mock, in-process.
+
+```sh
+go test ./...
+```
+
+CI runs it on every push and pull request, so a regeneration that breaks a command shows up before it merges.
+
 ## Upgrade
 
 ```sh

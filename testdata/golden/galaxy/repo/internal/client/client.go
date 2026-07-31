@@ -2,23 +2,113 @@
 
 // Package client is the generated API client: one method per operation over
 // plain net/http. Its exported surface is the stable contract that code under
-// internal/custom/ may depend on — later regenerations deepen behavior (auth,
-// retries, pagination) behind these same signatures.
+// internal/custom/ may depend on — later regenerations deepen behavior
+// (auth, pagination) behind these same signatures.
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
+
+const (
+	retryBaseDelay = 500 * time.Millisecond
+	retryCap       = 8 * time.Second
+	redacted       = "[REDACTED]"
+)
+
+var redactedHeaders = map[string]bool{
+	"authorization":       true,
+	"proxy-authorization": true,
+	"cookie":              true,
+	"set-cookie":          true,
+}
+
+// secretSegments are lowercase name segments (split on "-", "_", ".") that
+// alone mark a header name or JSON key as secret-shaped.
+var secretSegments = map[string]bool{
+	"token": true, "secret": true, "password": true, "auth": true,
+	"authorization": true, "apikey": true, "accesskey": true, "clientsecret": true,
+}
+
+// secretSegmentPairs are adjacent segments that only read as secret-shaped
+// concatenated, e.g. "api"+"key" from "X-Api-Key" or "openai_api_key".
+var secretSegmentPairs = map[string]bool{
+	"apikey": true, "accesskey": true, "clientsecret": true, "apitoken": true,
+	"accesstoken": true, "authtoken": true, "sessiontoken": true,
+	"privatekey": true, "secretkey": true,
+}
+
+// securityWireParams are this spec's apiKey securityScheme header/query/cookie
+// names, exact-matched since a custom name (e.g. "sig") might not satisfy the
+// segment heuristic below.
+var securityWireParams = map[string]bool{
+	"api_key":   true,
+	"x-api-key": true,
+}
+
+// isSecretField reports whether a header name or JSON key looks like it
+// carries a secret. Case-insensitive; splits on common separators so
+// "X-Api-Key", "apiKey" (already one word once lowercased), and
+// "openai_api_key" all match, while an unrelated compound like "NextToken"
+// (one word, no separator) does not.
+func isSecretField(name string) bool {
+	lower := strings.ToLower(name)
+	if securityWireParams[lower] {
+		return true
+	}
+	segments := strings.FieldsFunc(lower, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	})
+	for i, s := range segments {
+		if secretSegments[s] {
+			return true
+		}
+		if i > 0 && secretSegmentPairs[segments[i-1]+s] {
+			return true
+		}
+	}
+	return false
+}
 
 // Client calls Scalar Galaxy.
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client // nil means http.DefaultClient
+
+	// MaxRetries bounds retry attempts for 429/5xx/network failures; the
+	// Client zero value means no retries.
+	MaxRetries int
+	// RetryMaxElapsedTime caps total time spent sleeping between retries;
+	// zero means no cap beyond MaxRetries.
+	RetryMaxElapsedTime time.Duration
+	// Timeout bounds one logical request end to end, retries included;
+	// zero means no deadline beyond ctx's own.
+	Timeout time.Duration
+
+	// Header is merged into every request after per-operation headers, so
+	// it wins on key collisions.
+	Header http.Header
+
+	// Credentials holds resolved auth values keyed by securityScheme name
+	// (flag → env var precedence resolved by cmd/root.go); do() attaches
+	// them to the request per scheme's Type/In/Param.
+	Credentials map[string]string
+
+	Debug       bool
+	DebugUnsafe bool      // disables --debug redaction
+	DebugOut    io.Writer // where --debug logs request/response; nil disables logging
 }
 
 // Response is one API response with the body fully read.
@@ -26,44 +116,445 @@ type Response struct {
 	Status int
 	Header http.Header
 	Body   []byte
+	URL    string // the exact request URL, including query string
 }
 
-// ponytail: naive transport — no auth, retries, or pagination yet, and bodies
-// always go out as JSON; the execution layer upgrades do() without touching
-// any operation signature.
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte) (*Response, error) {
-	u := strings.TrimSuffix(c.BaseURL, "/") + path
+// RequestError marks a transport-level failure (DNS, connection refused,
+// timeout) so callers can map it onto a distinct exit code from HTTP error
+// responses, which do() returns as an ordinary *Response instead.
+type RequestError struct{ Err error }
+
+func (e *RequestError) Error() string { return e.Err.Error() }
+func (e *RequestError) Unwrap() error { return e.Err }
+
+// prepareRequest resolves the request URL, applies auth, and merges headers —
+// the setup do() and stream() both need before their retry loops start, kept
+// in one place so query/header/security semantics never drift between the
+// buffered and streaming paths. The returned context carries c.Timeout when
+// set; cancel is non-nil only in that case, and callers must defer it.
+func (c *Client) prepareRequest(ctx context.Context, path string, query url.Values, header http.Header, security [][]string) (context.Context, context.CancelFunc, string, http.Header, error) {
+	if header == nil {
+		header = http.Header{}
+	}
+	if query == nil {
+		query = url.Values{}
+	}
+	if err := c.applyAuth(security, header, query); err != nil {
+		return ctx, nil, "", nil, err
+	}
+
+	reqURL := strings.TrimSuffix(c.BaseURL, "/") + path
 	if len(query) > 0 {
-		u += "?" + query.Encode()
+		reqURL += "?" + query.Encode()
 	}
-	var rd io.Reader
-	if body != nil {
-		rd = bytes.NewReader(body)
+
+	var cancel context.CancelFunc
+	if c.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, rd)
+
+	reqHeader := http.Header{}
+	for k, vs := range header {
+		for _, v := range vs {
+			reqHeader.Add(k, v)
+		}
+	}
+	for k, vs := range c.Header {
+		reqHeader.Del(k)
+		for _, v := range vs {
+			reqHeader.Add(k, v)
+		}
+	}
+	return ctx, cancel, reqURL, reqHeader, nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string) (*Response, error) {
+	ctx, cancel, u, reqHeader, err := c.prepareRequest(ctx, path, query, header, security)
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if cancel != nil {
+		defer cancel()
 	}
-	for k, vs := range header {
-		for _, v := range vs {
-			req.Header.Add(k, v)
-		}
-	}
+
 	hc := c.HTTPClient
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	resp, err := hc.Do(req)
+
+	start := time.Now()
+	var lastResp *Response
+	var lastErr error
+retryLoop:
+	for attempt := 0; ; attempt++ {
+		var rd io.Reader
+		if body != nil {
+			rd = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, rd)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, vs := range reqHeader {
+			req.Header[k] = append([]string(nil), vs...)
+		}
+		c.logRequest(req, body)
+
+		resp, err := hc.Do(req)
+		switch {
+		case err != nil:
+			c.logError(err)
+			lastResp, lastErr = nil, err
+			if attempt >= c.MaxRetries || ctx.Err() != nil {
+				return nil, &RequestError{Err: err}
+			}
+		default:
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				lastResp, lastErr = nil, rerr
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				break
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
+			c.logResponse(resp, b)
+			lastResp, lastErr = result, nil
+			retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+			if !retryable || attempt >= c.MaxRetries || ctx.Err() != nil {
+				return result, nil
+			}
+		}
+
+		delay := backoffDelay(attempt)
+		if lastResp != nil {
+			if ra, ok := retryAfterDelay(lastResp.Header); ok && ra > delay {
+				delay = ra
+			}
+		}
+		if c.RetryMaxElapsedTime > 0 && time.Since(start)+delay > c.RetryMaxElapsedTime {
+			break retryLoop
+		}
+		select {
+		case <-ctx.Done():
+			break retryLoop
+		case <-time.After(delay):
+		}
+	}
+
+	if lastResp != nil {
+		return lastResp, nil
+	}
+	return nil, &RequestError{Err: lastErr}
+}
+
+// stream performs a text/event-stream request, calling fn once per SSE event
+// as its data arrives. Retries share do()'s 429/5xx/network policy, but only
+// up to the point a 2xx response is obtained: once events start dispatching,
+// a transport error surfaces directly as a RequestError rather than
+// restarting the request, since a retry would replay events fn already
+// delivered. A non-2xx response is read fully and returned as an ordinary
+// *Response (nil error) instead of streamed, so callers apply the same error
+// path as a buffered call. A 2xx response whose Content-Type isn't
+// text/event-stream gets the same treatment: some specs (e.g. OpenAI's chat
+// completions) declare one 200 as both application/json and
+// text/event-stream, chosen by a body field rather than content negotiation,
+// so the actual response decides, not the spec.
+func (c *Client) stream(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string, fn func(data []byte) error) (*Response, error) {
+	ctx, cancel, u, reqHeader, err := c.prepareRequest(ctx, path, query, header, security)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	if cancel != nil {
+		defer cancel()
 	}
-	return &Response{Status: resp.StatusCode, Header: resp.Header, Body: b}, nil
+	reqHeader.Set("Accept", "text/event-stream")
+
+	hc := c.HTTPClient
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+
+	start := time.Now()
+	for attempt := 0; ; attempt++ {
+		var rd io.Reader
+		if body != nil {
+			rd = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, rd)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, vs := range reqHeader {
+			req.Header[k] = append([]string(nil), vs...)
+		}
+		c.logRequest(req, body)
+
+		resp, err := hc.Do(req)
+		if err != nil {
+			c.logError(err)
+			if attempt >= c.MaxRetries || ctx.Err() != nil {
+				return nil, &RequestError{Err: err}
+			}
+			if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+				return nil, &RequestError{Err: ctx.Err()}
+			}
+			continue
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+					return nil, &RequestError{Err: ctx.Err()}
+				}
+				continue
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
+			c.logResponse(resp, b)
+			retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+			if retryable && attempt < c.MaxRetries && ctx.Err() == nil {
+				delay := backoffDelay(attempt)
+				if ra, ok := retryAfterDelay(resp.Header); ok && ra > delay {
+					delay = ra
+				}
+				if c.waitDelay(ctx, start, delay) {
+					continue
+				}
+			}
+			return result, nil
+		}
+
+		ct, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";")
+		if strings.TrimSpace(ct) != "text/event-stream" {
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+					return nil, &RequestError{Err: ctx.Err()}
+				}
+				continue
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
+			c.logResponse(resp, b)
+			return result, nil
+		}
+
+		// A 2xx SSE response arrived: retries stop here, so events already
+		// dispatched to fn are never replayed by a later transport error.
+		if c.Debug && c.DebugOut != nil {
+			_, _ = fmt.Fprintf(c.DebugOut, "<-- %s (event-stream)\n", resp.Status)
+			c.logHeader(resp.Header)
+		}
+		perr := parseSSE(resp.Body, fn)
+		_ = resp.Body.Close()
+		if perr != nil {
+			return nil, &RequestError{Err: perr}
+		}
+		return nil, nil
+	}
+}
+
+// waitDelay sleeps delay, reporting false when the elapsed-time budget or ctx
+// cut it short — the shared tail of do()'s inline retry wait, factored out so
+// stream()'s two retry sites (network error, retryable status) don't diverge.
+func (c *Client) waitDelay(ctx context.Context, start time.Time, delay time.Duration) bool {
+	if c.RetryMaxElapsedTime > 0 && time.Since(start)+delay > c.RetryMaxElapsedTime {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+	}
+}
+
+// parseSSE reads r as a Server-Sent Events stream, dispatching fn once per
+// event with its data lines joined by "\n". Comments (lines starting with
+// ":") and every field but "data" (event/id/retry) are ignored — the subset
+// that matters for relaying payloads, not replaying a full EventSource.
+func parseSSE(r io.Reader, fn func(data []byte) error) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	var lines []string
+	dispatch := func() error {
+		if len(lines) == 0 {
+			return nil
+		}
+		data := strings.Join(lines, "\n")
+		lines = lines[:0]
+		return fn([]byte(data))
+	}
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case line == "":
+			if err := dispatch(); err != nil {
+				return err
+			}
+		case strings.HasPrefix(line, ":"):
+			// comment
+		case strings.HasPrefix(line, "data:"):
+			lines = append(lines, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	// A stream that ends without a trailing blank line still dispatches
+	// whatever data it accumulated.
+	return dispatch()
+}
+
+// backoffDelay is jittered exponential backoff: base 500ms, factor 2, capped
+// at 8s, full jitter over [0, cap).
+func backoffDelay(attempt int) time.Duration {
+	d := retryBaseDelay
+	for i := 0; i < attempt && d < retryCap; i++ {
+		d *= 2
+	}
+	if d > retryCap {
+		d = retryCap
+	}
+	return time.Duration(rand.Int64N(int64(d))) + 1
+}
+
+// retryAfterDelay parses a Retry-After response header in either its
+// delay-seconds or HTTP-date form.
+func retryAfterDelay(h http.Header) (time.Duration, bool) {
+	v := h.Get("Retry-After")
+	if v == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			return 0, false
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d, true
+		}
+	}
+	return 0, false
+}
+
+func (c *Client) logRequest(req *http.Request, body []byte) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "--> %s %s\n", req.Method, c.redactedURL(req.URL))
+	c.logHeader(req.Header)
+	if len(body) > 0 {
+		_, _ = c.DebugOut.Write(c.redactBody(body))
+		_, _ = fmt.Fprintln(c.DebugOut)
+	}
+}
+
+func (c *Client) logResponse(resp *http.Response, body []byte) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "<-- %s\n", resp.Status)
+	c.logHeader(resp.Header)
+	if len(body) > 0 {
+		_, _ = c.DebugOut.Write(c.redactBody(body))
+		_, _ = fmt.Fprintln(c.DebugOut)
+	}
+}
+
+func (c *Client) logError(err error) {
+	if !c.Debug || c.DebugOut == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(c.DebugOut, "<-- error: %s\n", err)
+}
+
+func (c *Client) logHeader(h http.Header) {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := strings.Join(h[k], ", ")
+		if !c.DebugUnsafe && (redactedHeaders[strings.ToLower(k)] || isSecretField(k)) {
+			v = redacted
+		}
+		_, _ = fmt.Fprintf(c.DebugOut, "%s: %s\n", k, v)
+	}
+}
+
+// redactedURL renders u for the debug log with secret-shaped query param
+// values replaced; the real request's URL is never mutated.
+func (c *Client) redactedURL(u *url.URL) string {
+	if c.DebugUnsafe || u.RawQuery == "" {
+		return u.String()
+	}
+	q := u.Query()
+	for k := range q {
+		if isSecretField(k) || strings.EqualFold(k, "key") {
+			for i := range q[k] {
+				q[k][i] = redacted
+			}
+		}
+	}
+	cp := *u
+	cp.RawQuery = q.Encode()
+	return cp.String()
+}
+
+// redactBody replaces secret-shaped JSON object keys with a redaction
+// marker; non-JSON bodies are logged unchanged since there is no structure
+// to redact within.
+func (c *Client) redactBody(body []byte) []byte {
+	if c.DebugUnsafe {
+		return body
+	}
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return body
+	}
+	redactJSONValue(v)
+	out, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func redactJSONValue(v any) {
+	switch val := v.(type) {
+	case map[string]any:
+		for k, vv := range val {
+			if isSecretField(k) {
+				val[k] = redacted
+				continue
+			}
+			redactJSONValue(vv)
+		}
+	case []any:
+		for _, vv := range val {
+			redactJSONValue(vv)
+		}
+	}
 }

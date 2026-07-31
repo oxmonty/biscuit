@@ -72,7 +72,10 @@ type WriteResult = render.WriteResult
 // Generate derives the command surface from a loaded spec and renders the
 // complete output repository. Pure: nothing is written until FilePlan.Write.
 func Generate(_ context.Context, doc *Document, cfg *Config) (*FilePlan, error) {
-	api := mapping.Map(doc.doc, mapping.OverridesFromConfig(cfg))
+	if err := mapping.ValidatePagination(cfg); err != nil {
+		return nil, err
+	}
+	api := mapping.Map(doc.doc, cfg)
 	sum := sha256.Sum256(doc.doc.Bytes)
 	files, err := render.Render(api, cfg, render.Provenance{
 		SpecPath:   doc.doc.Path,

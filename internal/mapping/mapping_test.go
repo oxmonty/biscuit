@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/oxmonty/biscuit/internal/ir"
@@ -19,6 +20,17 @@ func mustMap(t *testing.T, path string) *ir.API {
 		t.Fatalf("Load(%s): %v", path, err)
 	}
 	return Map(doc, nil)
+}
+
+// mustMapInline writes an inline spec body to a temp file and maps it, for
+// tests that need a minimal fixture rather than a full ladder spec.
+func mustMapInline(t *testing.T, body string) *ir.API {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "spec.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return mustMap(t, path)
 }
 
 func TestMapPetstore(t *testing.T) {
@@ -127,5 +139,41 @@ components:
 	}
 	if !reflect.DeepEqual(shapes[0], shapes[1]) {
 		t.Errorf("3.0 and 3.1 shapes differ:\n3.0: %+v\n3.1: %+v", shapes[0], shapes[1])
+	}
+}
+
+func TestPathQueryStringStrippedWithDiagnostic(t *testing.T) {
+	// given: a path key carrying a query string (openai's "/responses?beta=true"
+	// shape) — path templates must not contain one per RFC 3986
+	api := mustMapInline(t, `
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /responses?beta=true:
+    post:
+      operationId: createResponse
+      responses:
+        "200": {description: ok}
+`)
+
+	// then: the operation's path has the query string stripped, not carried
+	// into resource naming or the request URL
+	if len(api.Operations) != 1 {
+		t.Fatalf("operations = %d, want 1", len(api.Operations))
+	}
+	if got := api.Operations[0].Path; got != "/responses" {
+		t.Errorf("Path = %q, want /responses", got)
+	}
+
+	// then: the dropped query string is recorded as a diagnostic naming the
+	// affected operation
+	found := false
+	for _, d := range api.Diagnostics {
+		if strings.Contains(d, "beta=true") && strings.Contains(d, "POST /responses") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Diagnostics = %v, want one naming the dropped query string and POST /responses", api.Diagnostics)
 	}
 }

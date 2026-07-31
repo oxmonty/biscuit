@@ -4,9 +4,12 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 
 	"github.com/oxmonty/galaxy-cli/internal/client"
+	"github.com/oxmonty/galaxy-cli/internal/cmdutil"
 	"github.com/oxmonty/galaxy-cli/internal/factory"
 	"github.com/oxmonty/galaxy-cli/internal/iostreams"
 	auth "github.com/oxmonty/galaxy-cli/pkg/cmd/auth"
@@ -20,17 +23,113 @@ import (
 func NewRootCmd(version string) *cobra.Command {
 	f := &factory.Factory{IOStreams: iostreams.System()}
 	var baseURL string
+	var maxRetries int
+	var noRetries bool
+	var retryMaxElapsedTime time.Duration
+	var timeout time.Duration
+	var debug bool
+	var debugUnsafe bool
+	var headers []string
+	var format string
+	var transform string
+	var transformError string
+	var formatError string
+	var output string
+	var includeHeaders bool
+	var maxPages int
+	var apiKeyCookie string
+	var apiKeyHeader string
+	var apiKeyQuery string
+	var basicAuth string
+	var bearerAuth string
+	var oAuth2 string
+	var openIdConnect string
+	f.Output = func() *cmdutil.OutputOptions {
+		return &cmdutil.OutputOptions{
+			Format:         format,
+			Transform:      transform,
+			TransformError: transformError,
+			FormatError:    formatError,
+			Output:         output,
+			IncludeHeaders: includeHeaders,
+		}
+	}
+	f.MaxPages = func() int { return maxPages }
 	f.Client = func() (*client.Client, error) {
-		return &client.Client{BaseURL: baseURL}, nil
+		h, err := cmdutil.ParseHeaders(headers)
+		if err != nil {
+			return nil, &cmdutil.UsageError{Err: err}
+		}
+		retries := maxRetries
+		if noRetries {
+			retries = 0
+		}
+		credentials := map[string]string{}
+		if v := cmdutil.ResolveCredential(apiKeyCookie, "GALAXY_API_KEY_COOKIE"); v != "" {
+			credentials["apiKeyCookie"] = v
+		}
+		if v := cmdutil.ResolveCredential(apiKeyHeader, "GALAXY_API_KEY_HEADER"); v != "" {
+			credentials["apiKeyHeader"] = v
+		}
+		if v := cmdutil.ResolveCredential(apiKeyQuery, "GALAXY_API_KEY_QUERY"); v != "" {
+			credentials["apiKeyQuery"] = v
+		}
+		if v := cmdutil.ResolveCredential(basicAuth, "GALAXY_BASIC_AUTH"); v != "" {
+			credentials["basicAuth"] = v
+		}
+		if v := cmdutil.ResolveCredential(bearerAuth, "GALAXY_BEARER_AUTH"); v != "" {
+			credentials["bearerAuth"] = v
+		}
+		if v := cmdutil.ResolveCredential(oAuth2, "GALAXY_O_AUTH2"); v != "" {
+			credentials["oAuth2"] = v
+		}
+		if v := cmdutil.ResolveCredential(openIdConnect, "GALAXY_OPEN_ID_CONNECT"); v != "" {
+			credentials["openIdConnect"] = v
+		}
+		return &client.Client{
+			BaseURL:             baseURL,
+			MaxRetries:          retries,
+			RetryMaxElapsedTime: retryMaxElapsedTime,
+			Timeout:             timeout,
+			Header:              h,
+			Credentials:         credentials,
+			Debug:               debug,
+			DebugUnsafe:         debugUnsafe,
+			DebugOut:            f.IOStreams.ErrOut,
+		}, nil
 	}
 	cmd := &cobra.Command{
 		Use:          "galaxy",
 		Short:        "Scalar Galaxy",
-		Long:         "The Scalar Galaxy is an example OpenAPI document to test OpenAPI tools and libraries. It's a fictional universe with fictional planets and fictional data.\n\nQuickstart:\n  galaxy auth token create\n  galaxy --help\n\nDocs: https://github.com/oxmonty/galaxy-cli",
+		Long:         "The Scalar Galaxy is an example OpenAPI document to test OpenAPI tools and libraries. It's a fictional universe with fictional planets and fictional data.\n\nQuickstart:\n  galaxy auth token create\n  galaxy --help\n\nAuth: --api-key-cookie or GALAXY_API_KEY_COOKIE (see README)\n\nDocs: https://github.com/oxmonty/galaxy-cli",
 		Version:      version,
 		SilenceUsage: true,
 	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &cmdutil.UsageError{Err: err}
+	})
 	cmd.PersistentFlags().StringVar(&baseURL, "base-url", "https://galaxy.scalar.com", "API base URL")
+	cmd.PersistentFlags().IntVar(&maxRetries, "max-retries", 2, "maximum retry attempts for 429/5xx/network errors")
+	cmd.PersistentFlags().BoolVar(&noRetries, "no-retries", false, "disable retries")
+	cmd.PersistentFlags().DurationVar(&retryMaxElapsedTime, "retry-max-elapsed-time", 60*time.Second, "total time budget for retry backoff")
+	cmd.PersistentFlags().DurationVar(&timeout, "timeout", 10*time.Minute, "per-request timeout, retries included")
+	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log full request/response to stderr, secrets redacted")
+	cmd.PersistentFlags().BoolVar(&debugUnsafe, "debug-unsafe", false, "disable --debug redaction")
+	cmd.PersistentFlags().StringArrayVar(&headers, "header", nil, `extra header to send with every request ("Key: Value"), repeatable`)
+	cmd.PersistentFlags().StringVar(&format, "format", "auto", "output format: auto|json|jsonl|pretty|raw|yaml")
+	cmd.PersistentFlags().StringVar(&transform, "transform", "", "GJSON expression applied to a successful response body")
+	cmd.PersistentFlags().StringVar(&transformError, "transform-error", "", "GJSON expression applied to an error (4xx/5xx) response body")
+	cmd.PersistentFlags().StringVar(&formatError, "format-error", "", "output format override for error response bodies (default: --format)")
+	cmd.PersistentFlags().StringVarP(&output, "output", "o", "", `write the response body to a file instead of stdout; "auto" derives a filename from the response, "-" forces stdout`)
+	cmd.PersistentFlags().BoolVar(&includeHeaders, "include-headers", false, "print the response status and headers before the body")
+	cmd.PersistentFlags().IntVar(&maxPages, "max-pages", 0, "maximum pages to fetch on a paginated command (0 walks every page)")
+	cmd.PersistentFlags().StringVar(&apiKeyCookie, "api-key-cookie", "", "credential for the apiKeyCookie security scheme (env GALAXY_API_KEY_COOKIE)")
+	cmd.PersistentFlags().StringVar(&apiKeyHeader, "api-key-header", "", "credential for the apiKeyHeader security scheme (env GALAXY_API_KEY_HEADER)")
+	cmd.PersistentFlags().StringVar(&apiKeyQuery, "api-key-query", "", "credential for the apiKeyQuery security scheme (env GALAXY_API_KEY_QUERY)")
+	cmd.PersistentFlags().StringVar(&basicAuth, "basic-auth", "", "credential for the basicAuth security scheme (env GALAXY_BASIC_AUTH)")
+	cmd.PersistentFlags().StringVar(&bearerAuth, "bearer-auth", "", "credential for the bearerAuth security scheme (env GALAXY_BEARER_AUTH)")
+	cmd.PersistentFlags().StringVar(&oAuth2, "o-auth2", "", "credential for the oAuth2 security scheme (env GALAXY_O_AUTH2)")
+	cmd.PersistentFlags().StringVar(&openIdConnect, "open-id-connect", "", "credential for the openIdConnect security scheme (env GALAXY_OPEN_ID_CONNECT)")
 	cmd.AddCommand(auth.NewCmdAuth(f))
 	cmd.AddCommand(celestialbodies.NewCmdCelestialBodies(f))
 	cmd.AddCommand(me.NewCmdMe(f))

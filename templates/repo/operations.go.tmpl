@@ -21,6 +21,14 @@ type {{.Ident}}Request struct {
 
 // {{.Ident}} calls {{.Method}} {{.Path}}.{{if .Short}} {{.Short}}{{end}}
 func (c *Client) {{.Ident}}(ctx context.Context, req *{{.Ident}}Request) (*Response, error) {
-	return c.do(ctx, {{q .Method}}, {{.PathExpr}}, req.Query, req.Header, req.Body)
+	return c.do(ctx, {{q .Method}}, {{.PathExpr}}, req.Query, req.Header, req.Body, {{.SecurityLit}})
 }
+{{if .SSE}}
+// {{.Ident}}Stream calls {{.Method}} {{.Path}}, dispatching fn once per
+// server-sent event as it arrives instead of buffering the whole response
+// the way {{.Ident}} above does.
+func (c *Client) {{.Ident}}Stream(ctx context.Context, req *{{.Ident}}Request, fn func(data []byte) error) (*Response, error) {
+	return c.stream(ctx, {{q .Method}}, {{.PathExpr}}, req.Query, req.Header, req.Body, {{.SecurityLit}}, fn)
+}
+{{end}}
 {{end}}

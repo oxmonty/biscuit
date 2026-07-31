@@ -23,12 +23,22 @@ spec:
   path: openapi.yaml
 lint:
   min_grade: 85
+pagination:
+  - name: acme-cursor
+    type: cursor
+    request:
+      cursor_param: since
+      limit_param: count
+    response:
+      items_field: envelope.rows
+      next_field: envelope.next
+      next_kind: cursor
 operations:
   listUsers:
     name: ls
     group: admin users
     aliases: [list-all]
-    pagination: cursor
+    pagination: acme-cursor
   debugDump:
     ignore: true
 `)
@@ -43,11 +53,61 @@ operations:
 	if cfg.Spec.Path != "openapi.yaml" || cfg.Lint.MinGrade != 85 {
 		t.Errorf("cfg = %+v", cfg)
 	}
-	if op := cfg.Operations["listUsers"]; op.Name != "ls" || op.Group != "admin users" || op.Pagination != "cursor" {
+	if op := cfg.Operations["listUsers"]; op.Name != "ls" || op.Group != "admin users" || op.Pagination != "acme-cursor" {
 		t.Errorf("listUsers = %+v", op)
 	}
 	if !cfg.Operations["debugDump"].Ignore {
 		t.Error("debugDump.Ignore not set")
+	}
+	if len(cfg.Pagination) != 1 {
+		t.Fatalf("pagination = %+v, want one scheme", cfg.Pagination)
+	}
+	if s := cfg.Pagination[0]; s.Request.CursorParam != "since" || s.Response.ItemsField != "envelope.rows" || s.Response.NextKind != "cursor" {
+		t.Errorf("scheme = %+v", s)
+	}
+}
+
+func TestLoadRejectsMalformedPaginationScheme(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{
+			"unknown type",
+			"pagination:\n  - name: s\n    type: keyset\n",
+			`unknown type "keyset"`,
+		},
+		{
+			"unknown next_kind",
+			"pagination:\n  - name: s\n    type: page\n    request: {page_param: p}\n    response: {next_field: n, next_kind: magic}\n",
+			`unknown next_kind "magic"`,
+		},
+		{
+			"type without its request param",
+			"pagination:\n  - name: s\n    type: offset\n    request: {limit_param: l}\n",
+			"needs request.offset_param",
+		},
+		{
+			"cursor without a next field",
+			"pagination:\n  - name: s\n    type: cursor\n    request: {cursor_param: c}\n",
+			"needs response.next_field",
+		},
+		{
+			"unknown key inside a scheme",
+			"pagination:\n  - name: s\n    type: page\n    request: {page_paran: p}\n",
+			"page_paran",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// given: a malformed pagination scheme
+			// when/then: loading fails, naming what is wrong
+			_, err := Load(write(t, tc.yaml))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want it to mention %q", err, tc.want)
+			}
+		})
 	}
 }
 
