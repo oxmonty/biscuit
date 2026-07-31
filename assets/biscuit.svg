@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Biscuit">
+  <defs>
+    <clipPath id="b-outer">
+      <rect x="61" y="61" width="390" height="390"/>
+      <circle cx="61" cy="61" r="36"/>
+      <circle cx="61" cy="451" r="36"/>
+      <circle cx="116.714" cy="61" r="36"/>
+      <circle cx="116.714" cy="451" r="36"/>
+      <circle cx="172.429" cy="61" r="36"/>
+      <circle cx="172.429" cy="451" r="36"/>
+      <circle cx="228.143" cy="61" r="36"/>
+      <circle cx="228.143" cy="451" r="36"/>
+      <circle cx="283.857" cy="61" r="36"/>
+      <circle cx="283.857" cy="451" r="36"/>
+      <circle cx="339.571" cy="61" r="36"/>
+      <circle cx="339.571" cy="451" r="36"/>
+      <circle cx="395.286" cy="61" r="36"/>
+      <circle cx="395.286" cy="451" r="36"/>
+      <circle cx="451" cy="61" r="36"/>
+      <circle cx="451" cy="451" r="36"/>
+      <circle cx="61" cy="116.714" r="36"/>
+      <circle cx="451" cy="116.714" r="36"/>
+      <circle cx="61" cy="172.429" r="36"/>
+      <circle cx="451" cy="172.429" r="36"/>
+      <circle cx="61" cy="228.143" r="36"/>
+      <circle cx="451" cy="228.143" r="36"/>
+      <circle cx="61" cy="283.857" r="36"/>
+      <circle cx="451" cy="283.857" r="36"/>
+      <circle cx="61" cy="339.571" r="36"/>
+      <circle cx="451" cy="339.571" r="36"/>
+      <circle cx="61" cy="395.286" r="36"/>
+      <circle cx="451" cy="395.286" r="36"/>
+    </clipPath>
+    <clipPath id="b-face">
+      <rect x="61.1969" y="61.1969" width="389.606" height="389.606"/>
+      <circle cx="61" cy="61" r="13"/>
+      <circle cx="61" cy="451" r="13"/>
+      <circle cx="116.714" cy="61" r="13"/>
+      <circle cx="116.714" cy="451" r="13"/>
+      <circle cx="172.429" cy="61" r="13"/>
+      <circle cx="172.429" cy="451" r="13"/>
+      <circle cx="228.143" cy="61" r="13"/>
+      <circle cx="228.143" cy="451" r="13"/>
+      <circle cx="283.857" cy="61" r="13"/>
+      <circle cx="283.857" cy="451" r="13"/>
+      <circle cx="339.571" cy="61" r="13"/>
+      <circle cx="339.571" cy="451" r="13"/>
+      <circle cx="395.286" cy="61" r="13"/>
+      <circle cx="395.286" cy="451" r="13"/>
+      <circle cx="451" cy="61" r="13"/>
+      <circle cx="451" cy="451" r="13"/>
+      <circle cx="61" cy="116.714" r="13"/>
+      <circle cx="451" cy="116.714" r="13"/>
+      <circle cx="61" cy="172.429" r="13"/>
+      <circle cx="451" cy="172.429" r="13"/>
+      <circle cx="61" cy="228.143" r="13"/>
+      <circle cx="451" cy="228.143" r="13"/>
+      <circle cx="61" cy="283.857" r="13"/>
+      <circle cx="451" cy="283.857" r="13"/>
+      <circle cx="61" cy="339.571" r="13"/>
+      <circle cx="451" cy="339.571" r="13"/>
+      <circle cx="61" cy="395.286" r="13"/>
+      <circle cx="451" cy="395.286" r="13"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#b-outer)">
+    <rect width="512" height="512" fill="#ED9146"/>
+  </g>
+  <g fill="#FFAC4D">
+    <rect x="52.1969" y="52.1969" width="407.606" height="407.606"/>
+    <circle cx="61" cy="61" r="22"/>
+    <circle cx="61" cy="451" r="22"/>
+    <circle cx="116.714" cy="61" r="22"/>
+    <circle cx="116.714" cy="451" r="22"/>
+    <circle cx="172.429" cy="61" r="22"/>
+    <circle cx="172.429" cy="451" r="22"/>
+    <circle cx="228.143" cy="61" r="22"/>
+    <circle cx="228.143" cy="451" r="22"/>
+    <circle cx="283.857" cy="61" r="22"/>
+    <circle cx="283.857" cy="451" r="22"/>
+    <circle cx="339.571" cy="61" r="22"/>
+    <circle cx="339.571" cy="451" r="22"/>
+    <circle cx="395.286" cy="61" r="22"/>
+    <circle cx="395.286" cy="451" r="22"/>
+    <circle cx="451" cy="61" r="22"/>
+    <circle cx="451" cy="451" r="22"/>
+    <circle cx="61" cy="116.714" r="22"/>
+    <circle cx="451" cy="116.714" r="22"/>
+    <circle cx="61" cy="172.429" r="22"/>
+    <circle cx="451" cy="172.429" r="22"/>
+    <circle cx="61" cy="228.143" r="22"/>
+    <circle cx="451" cy="228.143" r="22"/>
+    <circle cx="61" cy="283.857" r="22"/>
+    <circle cx="451" cy="283.857" r="22"/>
+    <circle cx="61" cy="339.571" r="22"/>
+    <circle cx="451" cy="339.571" r="22"/>
+    <circle cx="61" cy="395.286" r="22"/>
+    <circle cx="451" cy="395.286" r="22"/>
+  </g>
+  <g clip-path="url(#b-face)">
+    <rect width="512" height="512" fill="#FFB64F"/>
+    <path d="M 73 20 C 76 78 148 148 176 236 C 194 296 240 330 300 351 C 358 371 442 396 500 421 L 512 445 L 512 512 L 0 512 L 0 0 Z" fill="#FFAC4D"/>
+  </g>
+  <g fill="#CC8144">
+    <circle cx="96.9" cy="101.7" r="10"/>
+    <circle cx="176.4" cy="101.7" r="10"/>
+    <circle cx="256.0" cy="101.7" r="10"/>
+    <circle cx="336.3" cy="101.7" r="10"/>
+    <circle cx="415.8" cy="101.7" r="10"/>
+    <circle cx="136.3" cy="151.5" r="10"/>
+    <circle cx="216.6" cy="151.5" r="10"/>
+    <circle cx="296.1" cy="151.5" r="10"/>
+    <circle cx="376.4" cy="151.5" r="10"/>
+    <circle cx="96.9" cy="204.1" r="10"/>
+    <circle cx="176.4" cy="204.1" r="10"/>
+    <circle cx="256.0" cy="204.1" r="10"/>
+    <circle cx="336.3" cy="204.1" r="10"/>
+    <circle cx="415.8" cy="204.1" r="10"/>
+    <circle cx="136.3" cy="253.2" r="10"/>
+    <circle cx="216.6" cy="253.2" r="10"/>
+    <circle cx="296.1" cy="253.2" r="10"/>
+    <circle cx="376.4" cy="253.2" r="10"/>
+    <circle cx="96.9" cy="305.8" r="10"/>
+    <circle cx="176.4" cy="305.8" r="10"/>
+    <circle cx="256.0" cy="305.8" r="10"/>
+    <circle cx="336.3" cy="305.8" r="10"/>
+    <circle cx="415.8" cy="305.8" r="10"/>
+    <circle cx="136.3" cy="355.6" r="10"/>
+    <circle cx="216.6" cy="355.6" r="10"/>
+    <circle cx="296.1" cy="355.6" r="10"/>
+    <circle cx="376.4" cy="355.6" r="10"/>
+    <circle cx="96.9" cy="407.5" r="10"/>
+    <circle cx="176.4" cy="407.5" r="10"/>
+    <circle cx="256.0" cy="407.5" r="10"/>
+    <circle cx="336.3" cy="407.5" r="10"/>
+    <circle cx="415.8" cy="407.5" r="10"/>
+  </g>
+</svg>

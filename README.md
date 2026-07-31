@@ -1,4 +1,7 @@
-# biscuit
+<h1>
+  <img alt="biscuit logo" src="./assets/biscuit.svg" width="70" valign="middle">
+  &nbsp;biscuit
+</h1>
 
 <p align="left">
   <a href="https://github.com/oxmonty/biscuit/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/oxmonty/biscuit/ci.yml?branch=main&style=for-the-badge" height="22" alt="CI status"></a>
