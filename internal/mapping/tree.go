@@ -88,6 +88,8 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override, schemes []Sch
 		if diag != "" {
 			api.Diagnostics = append(api.Diagnostics, diag)
 		}
+		flags, flagDiags := flagsFor(op, schemaIdx)
+		api.Diagnostics = append(api.Diagnostics, flagDiags...)
 		v := &ir.Verb{
 			Name:        name,
 			Method:      op.Method,
@@ -96,7 +98,7 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override, schemes []Sch
 			Summary:     op.Summary,
 			Deprecated:  op.Deprecated,
 			Pagination:  pagination,
-			Flags:       flagsFor(op, schemaIdx),
+			Flags:       flags,
 			Multipart:   operationIsMultipart(op),
 			Security:    op.Security,
 			SSE:         isSSE(op),

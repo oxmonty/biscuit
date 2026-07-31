@@ -6,6 +6,7 @@ package mapping
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -73,7 +74,21 @@ func Map(doc *spec.Document, cfg *config.Config) *ir.API {
 	globalSecurity := mapSecurity(m.Security)
 	if m.Paths != nil {
 		for path, item := range m.Paths.PathItems.FromOldest() {
-			api.Operations = append(api.Operations, mapPathItem(path, item, globalSecurity)...)
+			// Path templates must not carry a query string (RFC 3986 / OpenAPI
+			// path-item keys); a spec that does anyway (openai's
+			// "/responses?beta=true") would otherwise leak "?beta=true" into
+			// resource naming and the request URL. Strip it before it enters
+			// mapping and note what got dropped.
+			cleanPath, query, hasQuery := strings.Cut(path, "?")
+			ops := mapPathItem(cleanPath, item, globalSecurity)
+			if hasQuery {
+				for _, op := range ops {
+					api.Diagnostics = append(api.Diagnostics, fmt.Sprintf(
+						"path %q: dropped query string %q from %s %s (path templates must not contain a query component)",
+						path, query, op.Method, cleanPath))
+				}
+			}
+			api.Operations = append(api.Operations, ops...)
 		}
 	}
 	sortOperations(api.Operations)
