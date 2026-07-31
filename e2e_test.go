@@ -2,10 +2,12 @@ package biscuit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -125,6 +127,39 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 		t.Errorf("--transform path = %q, want it to contain /pets", out)
 	}
 
+	// then: --transform-error and --format-error apply to a failing response's
+	// body instead of the success pair, and the extracted field lands on
+	// stdout — the command's real output — while cobra's own "Error: ..."
+	// summary goes to stderr
+	errSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
+	}))
+	defer errSrv.Close()
+	var transformStdout, transformStderr bytes.Buffer
+	transformErrCmd := exec.Command(cliBin, "pets", "list",
+		"--format", "yaml", "--format-error", "raw", "--transform-error", "error.message",
+		"--base-url", errSrv.URL)
+	transformErrCmd.Stdout = &transformStdout
+	transformErrCmd.Stderr = &transformStderr
+	runErr := transformErrCmd.Run()
+	var transformExitErr *exec.ExitError
+	if !errors.As(runErr, &transformExitErr) {
+		t.Fatalf("--transform-error against a 400: want *exec.ExitError, got %v\nstdout=%s\nstderr=%s", runErr, transformStdout.String(), transformStderr.String())
+	}
+	if transformExitErr.ExitCode() != 4 {
+		t.Errorf("--transform-error 400 exit code = %d, want 4", transformExitErr.ExitCode())
+	}
+	// raw preserves JSON quoting (see wantDeltas below), and --format-error
+	// raw must win over --format yaml, which would otherwise strip the quotes
+	if transformStdout.String() != `"boom"` {
+		t.Errorf("--transform-error/--format-error stdout = %q, want %q", transformStdout.String(), `"boom"`)
+	}
+	if strings.Contains(transformStderr.String(), "boom") {
+		t.Errorf("--transform-error leaked into stderr, want it only on stdout:\n%s", transformStderr.String())
+	}
+
 	// then: --include-headers prints the response status/headers before the
 	// body, on every format
 	headers := exec.Command(cliBin, "pets", "list", "--include-headers", "--base-url", srv.URL)
@@ -219,6 +254,28 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 	}
 	if name := wireName(t, echoed.Body); name != "@weird" {
 		t.Errorf(`wire name = %q, want "@weird"`, name)
+	}
+
+	// then: @<tmpfile> on a string body flag whose bytes are not valid UTF-8
+	// base64-encodes them instead of sending them raw (JSON has no raw-byte
+	// type) — the binary side of the sniff --name @file.ext exercised as text
+	// above
+	binPath := filepath.Join(work, "bin.dat")
+	binBytes := []byte{0xff, 0xfe, 0x00, 0x01, 0x80, 0x81}
+	if err := os.WriteFile(binPath, binBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	binFile := exec.Command(cliBin, "pets", "create", "--id", "1", "--name", "@"+binPath, "--base-url", srv.URL)
+	out, err = binFile.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pets create --name @binfile: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout not JSON: %q", out)
+	}
+	wantB64 := base64.StdEncoding.EncodeToString(binBytes)
+	if name := wireName(t, echoed.Body); name != wantB64 {
+		t.Errorf("wire name = %q, want base64 %q", name, wantB64)
 	}
 }
 
@@ -346,6 +403,21 @@ func TestEndToEndGalaxyAuth(t *testing.T) {
 		t.Errorf("requests reaching the server = %d, want still 1 (no network I/O on missing auth)", requests)
 	}
 
+	// then: a --bearer-auth flag wins over a (wrong) value already set in the
+	// credential's env var — flag-over-env precedence
+	flagOverEnv := exec.Command(cliBin, "planets", "delete", "--planet-id", "1", "--bearer-auth", "right", "--base-url", srv.URL)
+	flagOverEnv.Env = append(envWithoutPrefix(t, "SCALAR_GALAXY_"), "SCALAR_GALAXY_BEARER_AUTH=wrong")
+	out, err = flagOverEnv.CombinedOutput()
+	if err != nil {
+		t.Fatalf("planets delete with flag over wrong env: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &echoed); err != nil {
+		t.Fatalf("stdout is not the relayed response body: %q", out)
+	}
+	if echoed.Authorization != "Bearer right" {
+		t.Errorf("Authorization header = %q, want %q (flag must win over env)", echoed.Authorization, "Bearer right")
+	}
+
 	// then: uploadImage's format:binary property rides a real multipart/
 	// form-data body — the file's exact bytes and a sniffed image/png
 	// Content-Type on the wire, not a base64 JSON string
@@ -365,6 +437,26 @@ func TestEndToEndGalaxyAuth(t *testing.T) {
 	}
 	if uploadedContentType != "image/png" {
 		t.Errorf("uploaded multipart Content-Type = %q, want image/png", uploadedContentType)
+	}
+
+	// then: apiKeyQuery is one of the global security alternatives, so a
+	// credential configured only for it authenticates "planets delete" over
+	// the query string — and --debug's logged URL redacts that query param,
+	// with the secret value absent from every line of debug output
+	const apiKeySecret = "sekritquerykey"
+	var debugStdout, debugStderr bytes.Buffer
+	queryAuth := exec.Command(cliBin, "planets", "delete", "--planet-id", "1", "--debug", "--base-url", srv.URL)
+	queryAuth.Env = append(envWithoutPrefix(t, "SCALAR_GALAXY_"), "SCALAR_GALAXY_API_KEY_QUERY="+apiKeySecret)
+	queryAuth.Stdout = &debugStdout
+	queryAuth.Stderr = &debugStderr
+	if err := queryAuth.Run(); err != nil {
+		t.Fatalf("planets delete with apiKeyQuery auth: %v\nstdout=%s\nstderr=%s", err, debugStdout.String(), debugStderr.String())
+	}
+	if !strings.Contains(debugStderr.String(), "api_key=") || !strings.Contains(debugStderr.String(), "REDACTED") {
+		t.Errorf("--debug output missing a redacted api_key query param:\n%s", debugStderr.String())
+	}
+	if strings.Contains(debugStdout.String(), apiKeySecret) || strings.Contains(debugStderr.String(), apiKeySecret) {
+		t.Errorf("--debug output leaked the apiKeyQuery secret:\nstdout=%s\nstderr=%s", debugStdout.String(), debugStderr.String())
 	}
 }
 
@@ -599,6 +691,161 @@ func TestEndToEndPaginationWalk(t *testing.T) {
 			t.Errorf("widgets chat --transform delta line %d = %q, want %q", i, deltaLines[i], want)
 		}
 	}
+}
+
+// TestEndToEndRetriesAndExitCodes pins the retry loop and the documented
+// exit-code contract end to end: petstore-cli is built once and reused by
+// every sub-case below, each pointed at its own small server so the retry
+// count and final status are exact and cheap to assert. Retry-After is never
+// set, so jittered backoff (500ms base, doubling, capped) is the only delay —
+// kept to at most two retries per case to hold the added runtime down.
+func TestEndToEndRetriesAndExitCodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e skipped in -short")
+	}
+
+	work := t.TempDir()
+	biscuitBin := filepath.Join(work, "biscuit")
+	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building biscuit: %v\n%s", err, out)
+	}
+	spec, err := filepath.Abs("testdata/specs/petstore.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outDir := filepath.Join(work, "petstore-cli")
+	gen := exec.Command(biscuitBin, "generate", "--spec", spec, "--out", outDir, "--quiet")
+	gen.Dir = work
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("biscuit generate: %v\n%s", err, out)
+	}
+	cliBin := filepath.Join(work, "petstore")
+	if runtime.GOOS == "windows" {
+		cliBin += ".exe"
+	}
+	buildCLI := exec.Command("go", "build", "-o", cliBin, "./cmd/swagger-petstore")
+	buildCLI.Dir = outDir
+	if out, err := buildCLI.CombinedOutput(); err != nil {
+		t.Fatalf("building generated CLI: %v\n%s", err, out)
+	}
+
+	// flakyServer returns 429 for its first failCount requests, then 200 —
+	// shared shape for the three retry sub-cases, each with its own counter
+	// so a case that never reaches the successful request doesn't affect the
+	// others.
+	flakyServer := func(failCount int) (*httptest.Server, *int) {
+		requests := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests++
+			if requests <= failCount {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		}))
+		return srv, &requests
+	}
+
+	// then: default retries (--max-retries 2) exhaust two 429s and succeed on
+	// the third attempt — the mock proving retries fire and stop
+	t.Run("retries fire and stop", func(t *testing.T) {
+		srv, requests := flakyServer(2)
+		defer srv.Close()
+		out, err := exec.Command(cliBin, "pets", "list", "--base-url", srv.URL).CombinedOutput()
+		if err != nil {
+			t.Fatalf("pets list through 2x429: %v\n%s", err, out)
+		}
+		if *requests != 3 {
+			t.Errorf("requests = %d, want exactly 3 (2 retries then success)", *requests)
+		}
+		if !strings.Contains(string(out), `"ok"`) {
+			t.Errorf("success body not printed:\n%s", out)
+		}
+	})
+
+	// then: --no-retries makes exactly one attempt and fails on the first 429
+	t.Run("no-retries makes one attempt", func(t *testing.T) {
+		srv, requests := flakyServer(2)
+		defer srv.Close()
+		out, err := exec.Command(cliBin, "pets", "list", "--no-retries", "--base-url", srv.URL).CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("--no-retries against 429: want *exec.ExitError, got %v\n%s", err, out)
+		}
+		if *requests != 1 {
+			t.Errorf("requests = %d, want exactly 1 (--no-retries)", *requests)
+		}
+		if exitErr.ExitCode() == 0 {
+			t.Errorf("exit code = 0, want non-zero")
+		}
+	})
+
+	// then: --max-retries 1 makes exactly two attempts and still fails, since
+	// the server keeps 429ing past that budget
+	t.Run("max-retries 1 makes two attempts", func(t *testing.T) {
+		srv, requests := flakyServer(2)
+		defer srv.Close()
+		out, err := exec.Command(cliBin, "pets", "list", "--max-retries", "1", "--base-url", srv.URL).CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("--max-retries 1 against 429,429: want *exec.ExitError, got %v\n%s", err, out)
+		}
+		if *requests != 2 {
+			t.Errorf("requests = %d, want exactly 2 (--max-retries 1)", *requests)
+		}
+		if exitErr.ExitCode() != 4 {
+			t.Errorf("exit code = %d, want 4 (still 429 at the end)", exitErr.ExitCode())
+		}
+	})
+
+	// then: the documented exit-code contract holds for a 4xx, a 5xx, and a
+	// transport failure
+	t.Run("exit codes", func(t *testing.T) {
+		notFound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer notFound.Close()
+		out, err := exec.Command(cliBin, "pets", "list", "--base-url", notFound.URL).CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("404: want *exec.ExitError, got %v\n%s", err, out)
+		}
+		if exitErr.ExitCode() != 4 {
+			t.Errorf("404 exit code = %d, want 4", exitErr.ExitCode())
+		}
+
+		serverErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer serverErr.Close()
+		out, err = exec.Command(cliBin, "pets", "list", "--no-retries", "--base-url", serverErr.URL).CombinedOutput()
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("500: want *exec.ExitError, got %v\n%s", err, out)
+		}
+		if exitErr.ExitCode() != 5 {
+			t.Errorf("500 exit code = %d, want 5", exitErr.ExitCode())
+		}
+
+		// connection refused: reserve a port, then close it so nothing is
+		// listening there
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		if err := ln.Close(); err != nil {
+			t.Fatal(err)
+		}
+		out, err = exec.Command(cliBin, "pets", "list", "--no-retries", "--base-url", "http://"+addr).CombinedOutput()
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("connection refused: want *exec.ExitError, got %v\n%s", err, out)
+		}
+		if exitErr.ExitCode() != 6 {
+			t.Errorf("connection refused exit code = %d, want 6", exitErr.ExitCode())
+		}
+	})
 }
 
 // install.sh's offline suite rides go test so CI's single command runs it —
