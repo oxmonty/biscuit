@@ -4,6 +4,15 @@ name: release
 on:
   push:
     branches: [main]
+  # recovery lever: release-please can tag and then die before setting its
+  # outputs (transient API failure), skipping goreleaser and leaving the
+  # release asset-less — re-fire the asset build against the existing tag
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "existing tag to build and publish assets for"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,6 +20,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
@@ -26,12 +36,12 @@ jobs:
   # and GITHUB_TOKEN-created events never trigger workflows
   goreleaser:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
