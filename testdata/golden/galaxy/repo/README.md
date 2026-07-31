@@ -124,6 +124,16 @@ A flag takes precedence over its env var. `http basic` schemes take the credenti
 | 5 | 5xx API error |
 | 6 | Network/transport error |
 
+## Testing
+
+This repo ships its own test double: `internal/mock` is a server derived from the API spec, where every operation answers on its own route with a canned, schema-valid response and records the request it received. Next to it sits a generated smoke suite that drives every command in the tree against that mock, in-process.
+
+```sh
+go test ./...
+```
+
+CI runs it on every push and pull request, so a regeneration that breaks a command shows up before it merges.
+
 ## Upgrade
 
 ```sh

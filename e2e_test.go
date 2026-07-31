@@ -65,6 +65,15 @@ func TestEndToEndGeneratedCLIMakesRequests(t *testing.T) {
 		t.Fatalf("building generated CLI: %v\n%s", err, out)
 	}
 
+	// then: the fresh repo passes its own test suite — the generated smoke
+	// cases driving every command against the spec-derived mock it ships,
+	// which is what a user gets from `go test ./...` on day one
+	suite := exec.Command("go", "test", "./...")
+	suite.Dir = outDir
+	if out, err := suite.CombinedOutput(); err != nil {
+		t.Fatalf("generated repo's own go test ./... failed: %v\n%s", err, out)
+	}
+
 	// then: a generated command sends the right request on the wire —
 	// query param from a typed flag, response body relayed to stdout
 	list := exec.Command(cliBin, "pets", "list", "--limit", "5", "--base-url", srv.URL)

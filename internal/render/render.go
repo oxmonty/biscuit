@@ -77,6 +77,8 @@ func Render(api *ir.API, cfg *config.Config, prov Provenance) ([]File, error) {
 		{tmpl: "iostreams.go.tmpl", path: "internal/iostreams/iostreams.go", data: m, goSource: true},
 		{tmpl: "factory.go.tmpl", path: "internal/factory/factory.go", data: m, goSource: true},
 		{tmpl: "custom.go.tmpl", path: "internal/custom/custom.go", data: m, goSource: true, emitOnce: true},
+		{tmpl: "mock.go.tmpl", path: "internal/mock/mock.go", data: m, goSource: true},
+		{tmpl: "smoke_test.go.tmpl", path: "internal/mock/smoke_test.go", data: m, goSource: true},
 		{tmpl: "root.go.tmpl", path: "pkg/cmd/root.go", data: m, goSource: true},
 		{tmpl: "upgrade.go.tmpl", path: "pkg/cmd/upgrade.go", data: m, goSource: true},
 		{tmpl: "gendocs.go.tmpl", path: "scripts/gendocs/main.go", data: m, goSource: true},

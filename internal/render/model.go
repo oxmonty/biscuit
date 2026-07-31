@@ -40,6 +40,12 @@ type repoModel struct {
 	AllResources []*resourceView // every node, depth-first — one output file each
 	RootVerbs    []*verbView
 	Ops          []*verbView // every verb incl. root verbs, in Ident-claim order
+	MockRoutes   []*verbView // every verb sorted by (Path, Method): the mock's route table and the smoke suite's cases
+
+	// synth and opsByRoute back the mock's response synthesis: a verb knows its
+	// method and path, and the operation behind them carries the responses.
+	synth      *mockSynth
+	opsByRoute map[string]*ir.Operation
 
 	Security           []*securityView // securitySchemes, sorted by Name
 	SecurityWireParams []string        // apiKey scheme Param names, lowercased and deduped, for redaction
@@ -84,6 +90,15 @@ type verbView struct {
 	SecurityLit string         // Go [][]string literal: this verb's security OR-list, passed to Client.do
 	Pagination  *ir.Pagination // set when the operation matched a pagination scheme: the verb walks pages
 	SSE         bool           // success response is text/event-stream: the verb streams events instead of buffering one body
+
+	// the generated mock's route for this verb, and the smoke case driving it
+	MockPath     string // Path with any query string cut: what the request's URL path carries
+	MockStatus   int
+	MockType     string // response Content-Type; empty when the operation declares no body
+	MockBody     string // canned response body, compact JSON
+	SmokeName    string // command path, space-separated: the smoke subtest's name
+	SmokeArgsLit string // Go []string literal: command path plus every flag the invocation needs
+	SmokeSkip    string // non-empty: why this verb can't be driven generically
 }
 
 // securityView is one components/securitySchemes entry's generated shape:
@@ -194,6 +209,13 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	m.Security = m.buildSecurity(api.Security)
 	m.SecurityWireParams = wireParams(m.Security)
 
+	m.synth = newMockSynth(api.Schemas)
+	m.opsByRoute = make(map[string]*ir.Operation, len(api.Operations))
+	for i := range api.Operations {
+		op := &api.Operations[i]
+		m.opsByRoute[op.Method+" "+op.Path] = op
+	}
+
 	idents := identSet{}
 	// pkg/cmd/upgrade.go always declares newUpgradeCmd; claiming it here
 	// forces a spec operation that would derive the same Ident to Upgrade2
@@ -209,6 +231,13 @@ func buildModel(api *ir.API, cfg *config.Config, prov Provenance) *repoModel {
 	}
 	m.ManPages = append(m.ManPages, m.Binary+".1")
 	sort.Strings(m.ManPages)
+	m.MockRoutes = append(m.MockRoutes, m.Ops...)
+	sort.SliceStable(m.MockRoutes, func(i, j int) bool {
+		if m.MockRoutes[i].MockPath != m.MockRoutes[j].MockPath {
+			return m.MockRoutes[i].MockPath < m.MockRoutes[j].MockPath
+		}
+		return m.MockRoutes[i].Method < m.MockRoutes[j].Method
+	})
 	m.Long = m.buildLong()
 	return m
 }
@@ -405,6 +434,14 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 	}
 
 	vv.PathExpr = pathExpr(v.Path, vv.PathFlags)
+
+	words := append(append([]string(nil), chain...), v.Name)
+	vv.SmokeName = strings.Join(words, " ")
+	vv.SmokeArgsLit = goStringSliceLit(smokeArgs(words, v))
+	vv.SmokeSkip = smokeSkip(v, vv.PathFlags)
+	vv.MockPath = routePath(v.Path)
+	vv.MockStatus, vv.MockType, vv.MockBody = m.synth.mockResponse(m.opsByRoute[v.Method+" "+v.Path], v.SSE)
+
 	m.Ops = append(m.Ops, vv)
 	return vv
 }
