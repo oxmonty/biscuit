@@ -35,6 +35,28 @@ paths:
                       $ref: '#/components/schemas/Widget'
                   has_more:
                     type: boolean
+  /widgets/chat:
+    post:
+      summary: Stream a chat reply about widgets
+      operationId: streamWidgetChat
+      x-biscuit-group: widgets
+      x-biscuit-name: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      responses:
+        '200':
+          description: A server-sent event stream of chat chunks.
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /gadgets:
     get:
       summary: List gadgets

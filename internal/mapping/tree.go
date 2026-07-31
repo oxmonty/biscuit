@@ -99,6 +99,7 @@ func deriveCommands(api *ir.API, overrides map[string]ir.Override, schemes []Sch
 			Flags:       flagsFor(op, schemaIdx),
 			Multipart:   operationIsMultipart(op),
 			Security:    op.Security,
+			SSE:         isSSE(op),
 		}
 		for _, a := range ov.Aliases {
 			v.Aliases = append(v.Aliases, kebab(a))

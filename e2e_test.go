@@ -373,18 +373,21 @@ func envWithoutPrefix(t *testing.T, prefix string) []string {
 	return env
 }
 
-// TestEndToEndPaginationWalk pins transparent page walking end to end.
-// paginated.yaml carries one endpoint per pagination family — a Stripe-shaped
-// cursor and a classic offset/limit — because the walk's stop conditions and
-// next-request arithmetic only exist in generated code, so nothing short of a
-// built binary against a real server proves them.
+// TestEndToEndPaginationWalk pins transparent page walking and SSE streaming
+// end to end. paginated.yaml carries one endpoint per pagination family — a
+// Stripe-shaped cursor and a classic offset/limit — plus one text/event-stream
+// endpoint, because the walk's stop conditions, next-request arithmetic, and
+// the SSE parse/dispatch loop only exist in generated code, so nothing short
+// of a built binary against a real server proves them.
 func TestEndToEndPaginationWalk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e skipped in -short")
 	}
 
 	// given: a server paging 6 widgets three at a time, cursored on the id of
-	// each page's last widget, and 4 gadgets behind an offset/limit next URL
+	// each page's last widget, 4 gadgets behind an offset/limit next URL, and
+	// a chat endpoint streaming 3 SSE events (one split across two data:
+	// lines) followed by an OpenAI-style "[DONE]" tail
 	work := t.TempDir()
 	biscuitBin := filepath.Join(work, "biscuit")
 	build := exec.Command("go", "build", "-o", biscuitBin, "./cmd/biscuit")
@@ -394,7 +397,27 @@ func TestEndToEndPaginationWalk(t *testing.T) {
 
 	widgets := []string{"w1", "w2", "w3", "w4", "w5", "w6"}
 	var widgetRequests []string
+	var chatAccept string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/widgets/chat" {
+			chatAccept = r.Header.Get("Accept")
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher, _ := w.(http.Flusher)
+			for _, chunk := range []string{
+				"data: {\"delta\":\"Hello\"}\n\n",
+				// a multi-line event: two data: lines join with \n, still
+				// valid JSON since whitespace is allowed after the colon
+				"data: {\"delta\":\ndata: \" world\"}\n\n",
+				"data: {\"delta\":\"!\"}\n\n",
+				"data: [DONE]\n\n",
+			} {
+				_, _ = fmt.Fprint(w, chunk)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/gadgets" {
 			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -524,6 +547,48 @@ func TestEndToEndPaginationWalk(t *testing.T) {
 	}
 	if len(items) != 4 {
 		t.Errorf("gadgets merged array = %d items, want 4:\n%s", len(items), out)
+	}
+
+	// then: an SSE endpoint streams line-per-event JSONL when piped — the
+	// multi-line event's data: lines joined, and the "[DONE]" sentinel tail
+	// dropped rather than printed as a fourth line
+	chat := exec.Command(cliBin, "widgets", "chat", "--message", "hi", "--base-url", srv.URL)
+	out, err = chat.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets chat: %v\n%s", err, out)
+	}
+	chatLines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	wantChat := []string{`{"delta":"Hello"}`, `{"delta":" world"}`, `{"delta":"!"}`}
+	if len(chatLines) != len(wantChat) {
+		t.Fatalf("widgets chat lines = %d, want %d:\n%s", len(chatLines), len(wantChat), out)
+	}
+	for i, want := range wantChat {
+		if chatLines[i] != want {
+			t.Errorf("widgets chat line %d = %q, want %q", i, chatLines[i], want)
+		}
+	}
+	if chatAccept != "text/event-stream" {
+		t.Errorf("chat request Accept header = %q, want text/event-stream", chatAccept)
+	}
+
+	// then: --transform extracts a field from each event, not just once from
+	// the whole (nonexistent, for a stream) response body
+	chatTransform := exec.Command(cliBin, "widgets", "chat", "--message", "hi", "--transform", "delta", "--base-url", srv.URL)
+	out, err = chatTransform.CombinedOutput()
+	if err != nil {
+		t.Fatalf("widgets chat --transform delta: %v\n%s", err, out)
+	}
+	// gjson's Raw preserves JSON quoting, same as --transform on a buffered
+	// response (see TestEndToEndGeneratedCLIMakesRequests)
+	wantDeltas := []string{`"Hello"`, `" world"`, `"!"`}
+	deltaLines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(deltaLines) != len(wantDeltas) {
+		t.Fatalf("widgets chat --transform delta lines = %d, want %d:\n%s", len(deltaLines), len(wantDeltas), out)
+	}
+	for i, want := range wantDeltas {
+		if deltaLines[i] != want {
+			t.Errorf("widgets chat --transform delta line %d = %q, want %q", i, deltaLines[i], want)
+		}
 	}
 }
 

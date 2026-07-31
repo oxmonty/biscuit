@@ -80,6 +80,8 @@ galaxy auth token create
 - `--output/-o <path>` — write the response body to a file instead of stdout. `-o auto` derives a filename from the response (Content-Disposition, else the URL) and won't clobber an existing file; `-o -` forces stdout.
 - `--include-headers` — print the response status and headers before the body.
 
+SSE endpoints (`text/event-stream` responses) stream as line-per-event JSONL by default, composing with `--transform` the same way a buffered response does. The interactive terminal experience (a chat-style TUI rendering tokens as they arrive) is coming in a later release; for now every invocation gets plain line streaming.
+
 ## Pagination
 
 Commands whose endpoint paginates walk every page for you and print the items as one result: no cursor juggling, no `--page` loop. `--max-pages N` bounds the walk; the default, `0`, walks to exhaustion. Streaming formats (`--format jsonl`, `--format raw`, and `auto` when piped) print each page's items as they arrive; the document formats accumulate them into one merged array.

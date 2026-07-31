@@ -333,6 +333,22 @@ func successResponse(op *ir.Operation) *ir.Response {
 	return nil
 }
 
+// isSSE reports whether op's success response streams Server-Sent Events —
+// a 200-family response declaring a text/event-stream body, per the Protocol
+// scope section: SSE endpoints are ordinary operations with that content type.
+func isSSE(op *ir.Operation) bool {
+	resp := successResponse(op)
+	if resp == nil {
+		return false
+	}
+	for _, mt := range resp.Content {
+		if mt.Type == "text/event-stream" {
+			return true
+		}
+	}
+	return false
+}
+
 func jsonResponseSchema(resp *ir.Response) *ir.Schema {
 	for _, mt := range resp.Content {
 		if strings.Contains(mt.Type, "json") {

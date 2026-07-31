@@ -344,6 +344,70 @@ func PrintResponse(ios *iostreams.IOStreams, resp *client.Response, opts *Output
 	return nil
 }
 
+// PrintStream drives an SSE verb's output: it resolves the destination once
+// so --output accumulates across events, then calls doStream with a callback
+// that renders and writes each event's data as it arrives — an unbounded
+// stream can't buffer into one document the way a paginated walk's document
+// formats do, so json/pretty/yaml apply per event too. A non-2xx response
+// comes back as an ordinary *Response and goes through PrintResponse's usual
+// error path instead of being streamed.
+func PrintStream(ios *iostreams.IOStreams, opts *OutputOptions, doStream func(fn func(data []byte) error) (*client.Response, error)) error {
+	format := opts.Format
+	if format == "" || format == "auto" {
+		// a stream is a sequence of events, not one document — auto resolves
+		// to one line per event rather than pretty-printing mid-stream
+		format = "jsonl"
+	}
+	if !validOutputFormats[format] {
+		return &UsageError{Err: fmt.Errorf("invalid --format %q: want auto, json, jsonl, pretty, raw, or yaml", format)}
+	}
+
+	dest := ios.Out
+	switch opts.Output {
+	case "", "-":
+		// stdout
+	default:
+		name := opts.Output
+		if name == "auto" {
+			// ponytail: no response yet to derive a filename from when the
+			// stream starts (unlike PrintResponse's outputFilename); a fixed
+			// name beats guessing.
+			name = "stream"
+		}
+		f, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		dest = f
+	}
+
+	colorful := opts.Output == "" && ios.IsStdoutTTY() && os.Getenv("NO_COLOR") == ""
+
+	resp, err := doStream(func(data []byte) error {
+		if string(data) == "[DONE]" { // OpenAI's end-of-stream sentinel, not a real event
+			return nil
+		}
+		body := data
+		if opts.Transform != "" {
+			body = applyTransform(body, opts.Transform)
+		}
+		if rendered := formatBody(format, body, colorful); len(rendered) > 0 {
+			if _, err := dest.Write(rendered); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if resp != nil {
+		return PrintResponse(ios, resp, opts)
+	}
+	return nil
+}
+
 // Pagination is one operation's resolved pagination scheme, filled in by the
 // generator from the scheme that matched the operation's request params and
 // response shape.

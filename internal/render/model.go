@@ -83,6 +83,7 @@ type verbView struct {
 
 	SecurityLit string         // Go [][]string literal: this verb's security OR-list, passed to Client.do
 	Pagination  *ir.Pagination // set when the operation matched a pagination scheme: the verb walks pages
+	SSE         bool           // success response is text/event-stream: the verb streams events instead of buffering one body
 }
 
 // securityView is one components/securitySchemes entry's generated shape:
@@ -364,6 +365,7 @@ func (m *repoModel) buildVerb(v *ir.Verb, chain []string, idents identSet) *verb
 		Multipart:   v.Multipart,
 		SecurityLit: securityLit(v.Security),
 		Pagination:  v.Pagination,
+		SSE:         v.SSE,
 	}
 	if vv.Short == "" {
 		vv.Short = v.Method + " " + v.Path

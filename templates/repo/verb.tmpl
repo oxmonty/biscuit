@@ -173,7 +173,11 @@ func new{{.Ident}}Cmd(f *factory.Factory) *cobra.Command {
 				req.Body = b
 			}
 {{- end}}
-{{- if .Pagination}}
+{{- if .SSE}}
+			return cmdutil.PrintStream(f.IOStreams, f.Output(), func(fn func(data []byte) error) (*client.Response, error) {
+				return cl.{{.Ident}}Stream(cmd.Context(), req, fn)
+			})
+{{- else if .Pagination}}
 			if req.Query == nil {
 				req.Query = url.Values{}
 			}

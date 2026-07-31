@@ -223,6 +223,27 @@ func TestPaginationDeclaredSchemeOutranksBuiltin(t *testing.T) {
 	}
 }
 
+func TestIsSSE(t *testing.T) {
+	// given: a 200 response declaring text/event-stream
+	sse := ir.Operation{Method: "POST", Path: "/chat", Responses: []ir.Response{{
+		Status:  "200",
+		Content: []ir.MediaType{{Type: "text/event-stream"}},
+	}}}
+	// and: an otherwise identical operation returning JSON
+	json := ir.Operation{Method: "POST", Path: "/chat", Responses: []ir.Response{{
+		Status:  "200",
+		Content: []ir.MediaType{{Type: "application/json"}},
+	}}}
+
+	// then: only the event-stream response marks the operation SSE
+	if !isSSE(&sse) {
+		t.Error("isSSE(text/event-stream) = false, want true")
+	}
+	if isSSE(&json) {
+		t.Error("isSSE(application/json) = true, want false")
+	}
+}
+
 func TestValidatePaginationUnknownSchemeName(t *testing.T) {
 	// given: a per-operation override naming a scheme that does not exist
 	cfg := &config.Config{Operations: map[string]config.Operation{

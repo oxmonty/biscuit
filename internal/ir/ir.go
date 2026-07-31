@@ -44,6 +44,7 @@ type Verb struct {
 	Flags       []Flag                // sorted by Name
 	Multipart   bool                  // request body content type is multipart/form-data: BodyFlags become file/text parts, not a JSON object
 	Security    []SecurityRequirement // OR-list of alternatives; empty means no auth requirement
+	SSE         bool                  // 200-family response declares text/event-stream: the verb streams events instead of buffering one body
 }
 
 // Pagination is the matcher's verdict for one verb: which scheme claimed the

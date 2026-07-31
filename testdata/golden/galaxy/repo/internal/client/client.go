@@ -7,6 +7,7 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -126,7 +127,12 @@ type RequestError struct{ Err error }
 func (e *RequestError) Error() string { return e.Err.Error() }
 func (e *RequestError) Unwrap() error { return e.Err }
 
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string) (*Response, error) {
+// prepareRequest resolves the request URL, applies auth, and merges headers —
+// the setup do() and stream() both need before their retry loops start, kept
+// in one place so query/header/security semantics never drift between the
+// buffered and streaming paths. The returned context carries c.Timeout when
+// set; cancel is non-nil only in that case, and callers must defer it.
+func (c *Client) prepareRequest(ctx context.Context, path string, query url.Values, header http.Header, security [][]string) (context.Context, context.CancelFunc, string, http.Header, error) {
 	if header == nil {
 		header = http.Header{}
 	}
@@ -134,18 +140,17 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		query = url.Values{}
 	}
 	if err := c.applyAuth(security, header, query); err != nil {
-		return nil, err
+		return ctx, nil, "", nil, err
 	}
 
-	u := strings.TrimSuffix(c.BaseURL, "/") + path
+	reqURL := strings.TrimSuffix(c.BaseURL, "/") + path
 	if len(query) > 0 {
-		u += "?" + query.Encode()
+		reqURL += "?" + query.Encode()
 	}
 
+	var cancel context.CancelFunc
 	if c.Timeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
-		defer cancel()
 	}
 
 	reqHeader := http.Header{}
@@ -159,6 +164,17 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		for _, v := range vs {
 			reqHeader.Add(k, v)
 		}
+	}
+	return ctx, cancel, reqURL, reqHeader, nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string) (*Response, error) {
+	ctx, cancel, u, reqHeader, err := c.prepareRequest(ctx, path, query, header, security)
+	if err != nil {
+		return nil, err
+	}
+	if cancel != nil {
+		defer cancel()
 	}
 
 	hc := c.HTTPClient
@@ -235,6 +251,154 @@ retryLoop:
 		return lastResp, nil
 	}
 	return nil, &RequestError{Err: lastErr}
+}
+
+// stream performs a text/event-stream request, calling fn once per SSE event
+// as its data arrives. Retries share do()'s 429/5xx/network policy, but only
+// up to the point a 2xx response is obtained: once events start dispatching,
+// a transport error surfaces directly as a RequestError rather than
+// restarting the request, since a retry would replay events fn already
+// delivered. A non-2xx response is read fully and returned as an ordinary
+// *Response (nil error) instead of streamed, so callers apply the same error
+// path as a buffered call.
+func (c *Client) stream(ctx context.Context, method, path string, query url.Values, header http.Header, body []byte, security [][]string, fn func(data []byte) error) (*Response, error) {
+	ctx, cancel, u, reqHeader, err := c.prepareRequest(ctx, path, query, header, security)
+	if err != nil {
+		return nil, err
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+	reqHeader.Set("Accept", "text/event-stream")
+
+	hc := c.HTTPClient
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+
+	start := time.Now()
+	for attempt := 0; ; attempt++ {
+		var rd io.Reader
+		if body != nil {
+			rd = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, rd)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, vs := range reqHeader {
+			req.Header[k] = append([]string(nil), vs...)
+		}
+		c.logRequest(req, body)
+
+		resp, err := hc.Do(req)
+		if err != nil {
+			c.logError(err)
+			if attempt >= c.MaxRetries || ctx.Err() != nil {
+				return nil, &RequestError{Err: err}
+			}
+			if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+				return nil, &RequestError{Err: ctx.Err()}
+			}
+			continue
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, rerr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if rerr != nil {
+				c.logError(rerr)
+				if attempt >= c.MaxRetries || ctx.Err() != nil {
+					return nil, &RequestError{Err: rerr}
+				}
+				if !c.waitDelay(ctx, start, backoffDelay(attempt)) {
+					return nil, &RequestError{Err: ctx.Err()}
+				}
+				continue
+			}
+			result := &Response{Status: resp.StatusCode, Header: resp.Header, Body: b, URL: u}
+			c.logResponse(resp, b)
+			retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+			if retryable && attempt < c.MaxRetries && ctx.Err() == nil {
+				delay := backoffDelay(attempt)
+				if ra, ok := retryAfterDelay(resp.Header); ok && ra > delay {
+					delay = ra
+				}
+				if c.waitDelay(ctx, start, delay) {
+					continue
+				}
+			}
+			return result, nil
+		}
+
+		// A 2xx arrived: retries stop here, so events already dispatched to fn
+		// are never replayed by a later transport error.
+		if c.Debug && c.DebugOut != nil {
+			_, _ = fmt.Fprintf(c.DebugOut, "<-- %s (event-stream)\n", resp.Status)
+			c.logHeader(resp.Header)
+		}
+		perr := parseSSE(resp.Body, fn)
+		_ = resp.Body.Close()
+		if perr != nil {
+			return nil, &RequestError{Err: perr}
+		}
+		return nil, nil
+	}
+}
+
+// waitDelay sleeps delay, reporting false when the elapsed-time budget or ctx
+// cut it short — the shared tail of do()'s inline retry wait, factored out so
+// stream()'s two retry sites (network error, retryable status) don't diverge.
+func (c *Client) waitDelay(ctx context.Context, start time.Time, delay time.Duration) bool {
+	if c.RetryMaxElapsedTime > 0 && time.Since(start)+delay > c.RetryMaxElapsedTime {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+	}
+}
+
+// parseSSE reads r as a Server-Sent Events stream, dispatching fn once per
+// event with its data lines joined by "\n". Comments (lines starting with
+// ":") and every field but "data" (event/id/retry) are ignored — the subset
+// that matters for relaying payloads, not replaying a full EventSource.
+func parseSSE(r io.Reader, fn func(data []byte) error) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	var lines []string
+	dispatch := func() error {
+		if len(lines) == 0 {
+			return nil
+		}
+		data := strings.Join(lines, "\n")
+		lines = lines[:0]
+		return fn([]byte(data))
+	}
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case line == "":
+			if err := dispatch(); err != nil {
+				return err
+			}
+		case strings.HasPrefix(line, ":"):
+			// comment
+		case strings.HasPrefix(line, "data:"):
+			lines = append(lines, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	// A stream that ends without a trailing blank line still dispatches
+	// whatever data it accumulated.
+	return dispatch()
 }
 
 // backoffDelay is jittered exponential backoff: base 500ms, factor 2, capped
