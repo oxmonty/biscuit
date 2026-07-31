@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.0-alpha.8](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.7...v0.1.0-alpha.8) (2026-07-31)
+
+
+### Features
+
+* add output control to generated CLIs ([ae41b19](https://github.com/oxmonty/biscuit/commit/ae41b1982aa206fb69dfcc06c8e03224fb2a0951))
+* add retries, exit-code contract, --debug redaction to generated client ([e55af86](https://github.com/oxmonty/biscuit/commit/e55af8694f530c8af3c7871e9a87883612cce4f0))
+* add transparent pagination with declared and built-in schemes ([13946e4](https://github.com/oxmonty/biscuit/commit/13946e46b15606d83a0ff52c78c1d70658f3ef1b))
+* expand [@file](https://github.com/file) arguments and multipart uploads in generated CLIs ([42dcc7a](https://github.com/oxmonty/biscuit/commit/42dcc7ae87b3d5864c71c4fb8f550d7228bc36c4))
+* map securitySchemes to auth flags and env vars in generated CLIs ([a114b0b](https://github.com/oxmonty/biscuit/commit/a114b0be259b01c99a7d3987206237318104a0d3))
+* render spec-derived mock server and smoke suite into generated repos ([3e94f52](https://github.com/oxmonty/biscuit/commit/3e94f52e1823bfa14a104b6bceab527d1b001b5e))
+* stream SSE responses as line-per-event JSONL in generated CLIs ([28818f2](https://github.com/oxmonty/biscuit/commit/28818f2d3c37ce21c9b5ddf4ba4bd37e8fb5aaa2))
+
+
+### Bug Fixes
+
+* address code-review findings on the execution layer ([4f8b68b](https://github.com/oxmonty/biscuit/commit/4f8b68b2a017e92ebe00f2a83bb42b4da867486c))
+* strip query strings from path keys and drop empty-named flags ([5776d23](https://github.com/oxmonty/biscuit/commit/5776d239f57071785dadd2211898795b27199fba))
+
 ## [0.1.0-alpha.7](https://github.com/oxmonty/biscuit/compare/v0.1.0-alpha.6...v0.1.0-alpha.7) (2026-07-27)
 
 
