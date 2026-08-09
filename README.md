@@ -13,7 +13,7 @@
   -->
 </p>
 
-Convert an OpenAPI 3.x spec into a complete, production-ready CLI repository. An open, self-hostable alternative to the Stainless CLI generator.
+Convert an OpenAPI 3.x spec into a complete, production-ready CLI repository. An open, self-hostable alternative to [Stainless](https://www.stainless.com/) (recently acquired by Anthropic), [Fern](https://buildwithfern.com/), and [Speakeasy](https://www.speakeasy.com/).
 
 ```sh
 biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli
