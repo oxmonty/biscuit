@@ -3,7 +3,7 @@
 - Repo: https://github.com/oxmonty/biscuit.git
 - Design: [PRD.md](PRD.md) — every epic links into it; completed epics get a write-up in [docs/write-ups/](docs/write-ups/)
 
-> A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`) — the open, self-hostable alternative to the wound-down Stainless CLI generator and today's account-gated successors (Speakeasy, Fern).
+> A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`) — the open, self-hostable alternative to the Stainless CLI generator (acquired by Anthropic, hosted products wound down) and today's account-gated successors (Speakeasy, Fern).
 
 ```
 biscuit generate --spec openapi.yaml --config biscuit.yaml --out ./foo-cli

@@ -1,6 +1,6 @@
 # biscuit
 
-A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`). Self-hostable alternative to the wound-down Stainless CLI generator.
+A Go package and CLI that converts an OpenAPI 3.x spec into a complete, production-ready CLI repository (`{project}-cli`). Self-hostable alternative to the Stainless CLI generator (Stainless was acquired by Anthropic and its hosted products wound down), Fern, and Speakeasy.
 
 `ROADMAP.md` (epics E1–E12, MVP line, v0.1 release gates) and `PRD.md` (architecture, mapping heuristics, bench methodology, decision log) are the source of truth; every epic links to the PRD section that specifies it, and completed epics get a write-up in `docs/write-ups/`. Read the relevant PRD section before building anything.
 
